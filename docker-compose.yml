@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:latest
+    container_name: apex-db
+    restart: always
+    environment:
+      POSTGRES_USER: apex
+      POSTGRES_PASSWORD: apex123
+      POSTGRES_DB: apex
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: apex-travel-pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@apex.com
+      PGADMIN_DEFAULT_PASSWORD: apex123
+    ports:
+      - "5051:80"
+    depends_on:
+      - db
+
+  flask-app:
+    build: .
+    container_name: apex-flask
+    restart: always
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: "postgresql://apex:apex123@db:5432/apex"
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+    command: ["python", "main.py"]
+
+  interface-app:
+    build: .
+    container_name: apex-dashboard
+    restart: always
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: "postgresql://apex:apex123@db:5432/apex"
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    command: ["python", "app.py"]
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: apex-ngrok
+    restart: always
+    depends_on:
+      - interface-app
+    
+    environment:
+      NGROK_AUTHTOKEN: 2j99VhgHFBcclpf6m3Pm13OBtAf_36Ag9bisNdsVcWyu2va2p
+    ports:
+      - "4041:4040"  
+    command:
+    #- "http"
+    #- "flask-app:5000"
+
+    - "http"
+    - "http://host.docker.internal:5000"
+    
+volumes:
+  postgres_data:
