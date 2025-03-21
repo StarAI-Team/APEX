@@ -18,6 +18,7 @@ from drive_upload import upload_to_google_drive
 import uuid
 import time  # For timestamps
 from logging.handlers import RotatingFileHandler
+import openai
 
 
 
@@ -83,6 +84,81 @@ Session(app)
 # Admin number to send periodic updates
 ADMIN_NUMBER = os.getenv('ADMIN_NUMBER')
 
+
+def get_faq_response(query, from_number):
+    query = query.lower()
+
+    # Comprehensive FAQ responses
+    faq_responses = {
+        # General Information
+        "what are your business hours": "Monday - Sunday: 08:00 - 17:30",
+        "contact information": "Phone: +263773022984 / +263 7 77230797 | Email: sales@apextravel.co.zw",
+        "location": "12th Floor, Causeway Building, Harare",
+        "payment options": "Payment methods include DPO link, EcoCash, Omari, Innbucks, Paynow, and cash pick-up at Quest Financial Services.",
+        "online payments": "Full Name, Email, and Phone Number are required. A payment link will be sent via email.",
+        "world remit payments": "Name: Tanaka Mupfurutsa, Phone: +263773022984",
+        "cash pick-up": "Cash pick-up available at Quest Financial Services.",
+        "google review discount": "Enjoy 10% OFF your next booking! Just leave a Google Review.",
+        "promotions and discounts": "Get 10% off your next booking by leaving a Google Review!",
+        #"marii": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
+        "marii mota": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
+        "mari mota": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
+        "mota": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
+
+        # Car Rental Service
+        "rental prices": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
+        "fuel saver rental": "Honda Fit RS - $40/day, Toyota Aqua - $45/day. 150km free mileage per day.",
+        "luxury car rental": "Mercedes Benz E-Class 212 - $200/day, Mercedes Benz C-Class 204 - $150/day.",
+        "suv rental": "Toyota Fortuner GD6 - $200/day, Nissan X-Trail - $80/day, Chevrolet Trailblazer - $150/day.",
+        "double cab rental": "Toyota Hilux D4D - $150/day, Ford Ranger - $150/day, Nissan Navara - $250/day.",
+        "mini bus rental": "NV350 9 Seater - $150/day, NV350 13 Seater - $180/day.",
+        "mileage policy": "All rentals include daily free mileage that accumulates over rental days.",
+        "car rental requirements": "$200 refundable deposit, license or national ID required.",
+        
+        # Towing Service
+        "towing service": "We offer towing and roadside assistance 24/7.",
+        "towing cost": "Within Harare: $70. Outside Harare: $1.50 per km (round trip).",
+        "towing fee": "Base fee: $30 for up to 30km, $1.10 per km beyond 30km.",
+        "roadside assistance": "Available for breakdowns and emergencies.",
+        
+        # Tracking Service
+        "tracking service cost": "Installation: $50, Monthly: $13 (first 3 months upfront).",
+        "how to set up tracking": "Provide name, address, phone number, vehicle make, model, color, and registration number.",
+        "tracking installation cost": "$50 one-time installation fee.",
+        "monthly tracking fee": "$13 per month (first 3 months upfront).",
+
+        # Freight & Trucking Service
+        "freight service": "We offer cargo transport for various loads. Please provide your cargo and destination",
+        "how to book freight": "Provide cargo type, pick-up point, and destination.",
+        "freight charges": "Charges vary based on cargo weight and distance.",
+
+        # Travel & Tourism Services
+        "group travel booking": "We arrange group travel and school trips with driver and guide options.",
+        "tourism packages": "We offer curated tourism packages including driver and guide services.",
+        "school trip booking": "Includes bus and designated driver. Ask for the number of passengers.",
+        
+        # Promotions & Discounts
+        "discount for reviews": "Get 10% off your next booking by leaving a review on Google.",
+        "ongoing promotions": "Currently, get 10% off your next booking when you leave a review.",
+        
+        # Social Media Links
+        "facebook link": "https://www.facebook.com/share/19uytwkFis/",
+        "instagram link": "https://www.instagram.com/apextravelzimbabwe",
+        "twitter link": "https://x.com/apextravel263",
+        "tiktok link": "https://www.tiktok.com/@apextravel263",
+        "google review link": "https://www.google.com/gasearch?q=apex%20travel%20zimbabwe%20reviews",
+    }
+
+    # Check if the query matches any FAQ
+    for keyword, response in faq_responses.items():
+        if keyword in query:
+            return response
+
+    # Fallback to OpenAI if no direct match
+    bot_reply = query_openai_model(query, from_number)
+    return send_whatsapp_message(from_number, bot_reply, is_bot_message=True)
+    #return response['choices'][0]['message']['content'].strip()
+    
 
 
 def get_db_connection():
@@ -275,13 +351,16 @@ def create_new_thread(from_number, last_message):
     payload = {
         "messages": [
             {
-                "content": f"This is a new user whose contact number is {from_number}. ASK FOR THE USER NAME FIRST. Respond with 12 words or less and to the point"
+                "content": f"This is a new user whose contact number is {from_number}. ASK FOR THE USER'S FULL NAME FIRST. Respond with 12 words or less and to the point"
+                            "Avoid unnecessary details. NB whenever a car model or class is mentioned whether from user or from you at any point, ALWAYS SEND THE TRIGGER FOR THE CAR MODEL OR CAR CLASS TO SHOW IMAGES as well"
                             "(Once name is captured, don't ask for it again when getting service requirements) add emojis but sparingly not all messages. Use emojis here and there"
-                            "For rental ALWAYS ask for rent out date and return date, for towing ask for pickup and destination location to give user an estimate towing fee"
-                            "For towing ALWAYS send the estimate fee right after getting pickup and destination address and confirm if they are happy with the fee before asking for car image"
-                            "After gathering alL details for towing, send the trigger_payment_button fucntion"
-                            "If the upload is appropriate to the conversation flow then you can send the payment trigger. e.g. if user sent ID when renting a car then you can then send the payment trigger if not ask them to send the appropriate image first"
-                            "Avoid unnecessary details. NB If a car is mentioned whether from user or from you at any point, ALWAYS SEND THE TRIGGER FOR THE CAR MODEL OR CAR CLASS TO SHOW IMAGES",
+                            "For rental ALWAYS ask for rent out date and return date, for towing ask for pickup separately first and destination location on its own then give user an estimate towing fee"
+                            "For towing ALWAYS send the estimate fee and Estimated time of arrival right after getting pickup and destination address before asking for car image to confirm towing"
+                            "If you respond and do not get a clear answer, politely acknowledge the user's response and ask your question but in a different way"
+                            "Users are from Zimbabwe, so they speak English, Shona and maybe Ndebele. typically mixed"
+                            "For tracking, on the requirements, ask for the Calling number if its different from the whatsapp Number    "
+                            "Do not mention the user's name in every message unless neccesary. After gathering alL details for towing, send the trigger_payment_button function"
+                            "If the upload is appropriate to the conversation flow then you can send the payment trigger. e.g. if user sent ID when renting a car then you can then send the payment trigger if not ask them to send the appropriate image first",
                 "role": "assistant"
             },
             {"content": "All responses must be very short. concise but friendly", "role": "assistant"},  # ✅ Provide context
@@ -370,6 +449,7 @@ def send_whatsapp_interactive_message(to, payload, max_retries=3):
 
         except requests.RequestException as e:
             logging.warning(f"❌ WhatsApp API Error on attempt {attempt + 1}: {e}")
+            logging.error(f"❌ WhatsApp API response: {response.text}")
             time.sleep(2)
 
     logging.error(f"❌ Failed to send WhatsApp interactive message to {to} after {max_retries} attempts.")
@@ -384,6 +464,7 @@ def handle_payment_selection(from_number, selection_id):
     Extracts relevant details and logs service request in DB.
     """
     ref_number = generate_ref_number()  # ✅ Generate unique ref number
+    #Insert ref number into services to secure ref_number and get ID from DB use as ref_number
 
     # ✅ Determine payment method
     if selection_id == "pay_online":
@@ -409,6 +490,7 @@ def handle_payment_selection(from_number, selection_id):
 
     # ✅ Send Confirmation Message to User
     send_whatsapp_message(from_number, message, is_bot_message=True)
+    drive_link = drive_links.get(from_number, "No Drive Link Available")
 
     # ✅ Generate Admin Summary using OpenAI
     openai_message_admin = (
@@ -416,7 +498,8 @@ def handle_payment_selection(from_number, selection_id):
         f"📞 Contact: {from_number}\n"
         f"📌 Reference Number: {ref_number}\n"
         f"Payment Method: {payment_method}"
-        f"📋 Generate a structured summary including the user's name, Contact, Ref Number,drive link: {drive_links[from_number]} "
+        f"drive link: {drive_link} "
+        f"📋 Generate a structured summary including the user's name, Contact, Ref Number,drive link: {drive_link} "
         f"Service Type, and any available uploaded document links.\n"
         f"Just keep the summary short e.g\n" 
         """📢 New Car Rental Request!
@@ -428,11 +511,14 @@ def handle_payment_selection(from_number, selection_id):
             🔍 Next Steps: User chose to pay online/on-site, kindly check car availability and follow up with client"""
     )
     admin_summary = query_openai_model(openai_message_admin, from_number)
-
+    ref_numbers[from_number] = ref_number
     # ✅ Extract User Name, Service Type, and Drive Link from the Summary
     extracted_name = extract_name(admin_summary)
     extracted_service = extract_service_type(admin_summary)
-    drive_link = drive_links[from_number]
+    # Extract the drive link from the summary using a regular expression
+    drive_link_match = re.search(r"https:\/\/drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+\/view\?usp=drivesdk", admin_summary)
+    drive_link = drive_link_match.group(0) if drive_link_match else "No Drive Link Available"
+
 
     # ✅ Store Service Request in Database
     store_service_request(
@@ -832,7 +918,7 @@ last_sent_messages = {}
 
 processed_triggers = set()  # ✅ Store processed trigger messages to prevent duplication
 
-def send_whatsapp_message(to, message=None, max_retries=3, is_bot_message=False):
+def send_whatsapp_message(to, message=None, max_retries=3, is_bot_message=True):
     """Sends a WhatsApp message while ensuring triggers are processed only once and avoids repeating recent messages."""
     start_time = time.time()
     PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID")
@@ -857,8 +943,9 @@ def send_whatsapp_message(to, message=None, max_retries=3, is_bot_message=False)
     #     logging.info(f"🔄 Message '{message_clean}' was recently sent. Sending fallback response instead.")
     #     send_text_message(to, "Hang on...")  # ✅ Send fallback response
     #     return True  # ✅ Stop further processing
+    if message_clean in last_sent_messages:
+        return True
     
-
     # ✅ Store the message in user_message_history
     if to not in user_message_history:
         user_message_history[to] = []
@@ -877,9 +964,10 @@ def send_whatsapp_message(to, message=None, max_retries=3, is_bot_message=False)
         "trigger_nissan_navara", "trigger_toyota_hilux_d4d", "trigger_ford_ranger", "trigger_honda_fits",
         "trigger_isuzu_x-rider", "trigger_nv350_9_seater", "trigger_nv350_13_seater", "trigger_toyota_fortuner",
         "trigger_1", "trigger_2", "trigger_3", "trigger_4", "trigger_5", "trigger_gd6_hilux",
-        "trigger_suv", "trigger_fuel_saver", "trigger_double_cab", "trigger_mid_suv",
+        "trigger_suv", "trigger_fuel_saver", "trigger_double_cab", "trigger_mid_suv", "trigger_send_pop_notification_to_admin",
         "trigger_mini_buses", "trigger_luxury", "trigger_axio", "trigger_mercedes_benz_e_class",
-        "trigger_mercedes_benz_c_class", "trigger_all_car_images", "trigger_toyota_gd6_hilux"
+        "trigger_mercedes_benz_c_class", "trigger_all_car_images", "trigger_toyota_gd6_hilux",
+        "trigger_send_freight_notification_to_admin"
     }
 
     # ✅ Detect Trigger Word
@@ -890,12 +978,12 @@ def send_whatsapp_message(to, message=None, max_retries=3, is_bot_message=False)
 
         # ✅ If from bot, send trigger directly to webhook (DO NOT request another bot reply)
         if is_bot_message:
-            send_to_webhook(to, detected_trigger)
-            logging.info(f"✅ Successfully sent trigger word '{detected_trigger}' to webhook.")
             message_without_trigger = message_clean.replace(detected_trigger, "").strip()
             if message_without_trigger:
                 logging.info(f"📨 Sending full message to user before trigger: '{message_without_trigger}'")
                 send_text_message(to, message_without_trigger)
+            send_to_webhook(to, detected_trigger)
+            logging.info(f"✅ Successfully sent trigger word '{detected_trigger}' to webhook.") 
             return True  # ✅ Exit here so we don't request another bot reply
 
         # ✅ If from user, process normally (send message & trigger separately)
@@ -905,8 +993,8 @@ def send_whatsapp_message(to, message=None, max_retries=3, is_bot_message=False)
                 logging.info(f"📨 Sending full message to user before trigger: '{message_without_trigger}'")
                 send_text_message(to, message_without_trigger)
             
-            send_to_webhook(to, detected_trigger)
-            logging.info(f"✅ Successfully sent trigger word '{detected_trigger}' to webhook.")
+            # send_to_webhook(to, detected_trigger)
+            # logging.info(f"✅ Successfully sent trigger word '{detected_trigger}' to webhook.")
 
             return True  # ✅ Exit here so we don't request another bot reply
 
@@ -952,10 +1040,20 @@ def send_text_message(to, text):
             execution_time = time.time() - start_time
             logging.info(f"✅ WhatsApp message sent to {to} in {execution_time:.2f} seconds on attempt {attempt + 1}")
             logging.debug(f"📨 WhatsApp API Response: {response.json()}")
+
+            # ✅ Store the last 4 received messages for this user
+            if to not in last_sent_messages:
+                last_sent_messages[to] = []
+            last_sent_messages[to].append(text)
+
+            # ✅ Keep only the last 5 messages (remove older ones)
+            if len(last_sent_messages[to]) > 5:
+                last_sent_messages[to].pop(0)
             return True
 
         except requests.RequestException as e:
             logging.warning(f"❌ WhatsApp API Error on attempt {attempt + 1}: {e}")
+            logging.error(f"❌ WhatsApp API response: {response.text}")
             time.sleep(2)
 
     logging.error(f"❌ Failed to send WhatsApp message to {to} after 3 attempts.")
@@ -1043,6 +1141,9 @@ def generate_ref_number():
     cursor.execute("SELECT ref_number FROM services ORDER BY id DESC LIMIT 1;")
     last_ref = cursor.fetchone()
 
+    # cursor.execute(F"INSERT INTO services {from_number} Values (%s) returning id;")
+    # last_ref = cursor.fetchone()
+
     # ✅ Extract numeric part and increment
     current_date = datetime.now()
     month = current_date.strftime("%m")
@@ -1104,11 +1205,132 @@ def user_exists(from_number):
 user_threads = {}
 rental_sessions = {}
 drive_links = {}
+ref_numbers = {}
 
 def set_user_thread(from_number, thread_id):
     """Stores the OpenAI thread ID for a specific user."""
     user_threads[from_number] = thread_id
     #print(f"✅ Thread ID {thread_id} set for user {from_number}")
+
+def send_freight_notification_to_admin(from_number, message):
+    """
+    Extracts freight details from an OpenAI conversation and sends a structured notification to the admin.
+    """
+
+    # ✅ Generate Unique Reference Number
+    ref_number = generate_ref_number()
+
+    # ✅ Query OpenAI for Freight Details
+    openai_prompt = (
+        f"A user with phone number {from_number} wants to transport cargo. Extract the details and format them.\n"
+        f"📌 Identify:\n"
+        f"- Freight type\n"
+        f"- Quantity (e.g., 10 tonnes)\n"
+        f"- Destination\n\n"
+        f"Example:\n"
+        f"User: I need to transport 10 tonnes of maize to Kadoma.\n"
+        f"AI Response:\n"
+        f"✅ Freight: Maize\n"
+        f"📦 Quantity: 10 tonnes\n"
+        f"📍 Destination: Kadoma"
+    )
+
+    freight_details = query_openai_model(openai_prompt, from_number)
+
+    if not freight_details:
+        logging.warning("⚠ OpenAI failed to extract freight details.")
+        return "Sorry, I couldn't extract the details. Please provide the freight type, quantity, and destination."
+
+    # ✅ Parse freight details
+    try:
+        freight_type = freight_details.get("freight_type", "Unknown")
+        quantity = freight_details.get("quantity", "Unknown")
+        destination = freight_details.get("destination", "Unknown")
+    except Exception as e:
+        logging.error(f"Error parsing freight details: {str(e)}")
+        return "An error occurred while processing the freight details."
+
+    # ✅ Format Admin Message
+    admin_message = (
+        f"📢 *New Freight Request!*\n"
+        f"👤 *Client:* {from_number}\n"
+        f"📦 *Freight:* {freight_type}\n"
+        f"🔢 *Quantity:* {quantity}\n"
+        f"📍 *Destination:* {destination}\n"
+        f"📌 *Reference Number:* {ref_number}\n"
+        f"🚛 *Next Steps:* Connect with the freight operator."
+    )
+
+    # ✅ Send Notification to Admin
+    try:
+        send_whatsapp_message(ADMIN_NUMBER, admin_message)
+        logging.info(f"Notification sent to admin: {admin_message}")
+    except Exception as e:
+        logging.error(f"Failed to send notification to admin: {str(e)}")
+        return "Failed to send freight notification to admin."
+
+    # ✅ Notify User
+    user_reply = f" Your reference number is {ref_number}. Our Freight Operator will contact you from this number +123456"
+    try:
+        send_whatsapp_message(ADMIN_NUMBER, admin_message)
+        send_whatsapp_message(from_number, user_reply)
+
+
+        logging.info(f"Admin notified: {admin_message}")
+    except Exception as e:
+        logging.error(f"Failed to notify user: {str(e)}")
+        return "Failed to send notification to the user."
+
+    return "Freight notification sent successfully."
+
+def send_pop_notification_to_admin(from_number):
+    """
+    Extracts POP details from an OpenAI conversation and sends a structured notification to the admin.
+    """
+
+    # ✅ Generate Unique Reference Number
+    #ref_number = generate_ref_number()
+    drive_link = drive_links[from_number]
+    conn = get_db_connection()
+    if not conn:
+        return False  # If DB fails, assume message is new (to avoid blocking processing)
+
+    try:
+        cursor = conn.cursor()
+
+        # ✅ Check if message_id exists in the database
+        cursor.execute("SELECT ref_number FROM services WHERE wa_id = %s ORDER BY created_at DESC LIMIT 1;", (from_number,))
+        exists = cursor.fetchone()[0]
+        if exists:
+            ref_number = exists
+            return exists
+    except psycopg2.Error as e:
+        logging.error(f"❌ Database error while retrieving ref_number: {e}")
+        return False  # If DB error, assume message is new to prevent blocking
+
+    # ✅ Query OpenAI for Freight Details
+    openai_prompt = (
+        f"A user with phone number {from_number} has uploaded POP. Generate a summary for the admin in this format\n"
+        f"📢 *New POP Upload!*\n"
+        f"👤 *Client:* {from_number}\n"
+        f"🔢 *Transaction Details (ID):*\n"
+        f"📌 *Reference Number:* {ref_number}\n"
+        f"   *Drive link:* {drive_links[from_number]}"
+        f" *Next Steps:* Validate and Reach out to user"
+    )
+
+    pop_details = query_openai_model(openai_prompt, from_number)
+
+    if not pop_details:
+        logging.warning("⚠️ OpenAI failed to extract POP details.")
+        return "Sorry, I couldn't extract the details. Please reupload the POP."
+
+
+    # ✅ Notify User
+    #user_reply = f"Got it! Please hold on while I connect you with our freight operator. Your reference number is {ref_number}."
+    send_whatsapp_message(ADMIN_NUMBER, pop_details)
+    
+    return "Freight notification sent successfully."
 
 
 def process_uploaded_media(message):
@@ -1151,6 +1373,7 @@ def process_uploaded_media(message):
 
     logging.info(f"✅ Using OpenAI thread: {thread_id}")
 
+    send_whatsapp_message(from_number, "Hang on... Image is downloading")
     # ✅ Upload Image to OpenAI FIRST
     logging.info("🚀 Uploading image to OpenAI...")
     file_id = upload_file(media_url)
@@ -1180,19 +1403,20 @@ def process_uploaded_media(message):
     # ✅ Upload Image to Google Drive AFTER OpenAI Processing
     drive_link = upload_to_google_drive(media_url, f"{from_number}_uploaded.jpg")
     drive_links[from_number] = drive_link
+    logging.info(f"Extracted drive linbk: {drive_links[from_number]}")
     if not drive_link:
         logging.error("❌ Image upload to Google Drive failed.")
         return jsonify({"error": "Image upload to Google Drive failed."}), 500
 
-    logging.info(f"✅ Image uploaded to Google Drive: {drive_link}")
+    logging.info(f"✅ Image uploaded to Google Drive: {drive_links[from_number]}")
 
     # ✅ Send Final Response to User
     final_response = extracted_text
     send_whatsapp_message(from_number, final_response, is_bot_message=True)
-    # bot_reply = query_openai_model("Send the payment trigger only if the uploaded file matches the required context (e.g., ID for car rental). Otherwise, prompt the user to upload the correct file first.",from_number)
+    bot_reply = query_openai_model("Send the payment trigger only if the uploaded file matches the required context (e.g., ID for car rental).If its a Proof of Payment with transaction ID or ref number send the trigger_send_pop_notification_to_admin function.  Otherwise, prompt the user to upload the correct file first. (Take Note of user's Name)",from_number)
     # # # ✅ Send Summary to Admin
     # # admin_summary = f"📢 *New Image Upload Processed!*\n📞 *Contact:* {from_number}\n📸 *Image Link:* {drive_link}\n📝 *AI Analysis:* {extracted_text}"
-    # send_whatsapp_message(from_number, bot_reply)
+    send_whatsapp_message(from_number, bot_reply)
     # rental_sessions[from_number] = admin_summary  # ✅ Store admin summary temporarily
     #trigger_payment_button(from_number)
 
@@ -1631,7 +1855,7 @@ def send_car_model(response_data, message):
                    "- Example: 10 days = 1500km mileage\n"
                    "- $200 refundable security deposit"},
             {"file_url": "https://drive.google.com/uc?export=download&id=1nJmfdT0_n1tGwqUV1ZDVCsG8G0s-K58f",
-             "caption": "7"},
+             "caption": ""},
             {"file_url": "https://drive.google.com/uc?export=download&id=1hb-0zZ5toK8xw8HzMZYj_t6EoaDuP2Vy", 
             "caption": "Honda Vezel  \n"
                    "- $80/day\n"
@@ -1653,7 +1877,7 @@ def send_car_model(response_data, message):
                    "- Example: 10 days = 1500km mileage\n"
                    "- $200 refundable security deposit"},
             {"file_url": "https://drive.google.com/uc?export=download&id=1vcQMuqgzAxAUYDF3ToI4E15B3RlmAseZ", 
-            "caption": "12"},
+            "caption": ""},
             {"file_url": "https://drive.google.com/uc?export=download&id=1Dd_rvsiv02mwrlTh5oskp859LRW8wmc9",
              "caption": "Chevrolet TrailBlazer\n"
                    "- $150/day\n"
@@ -1685,7 +1909,7 @@ def send_car_model(response_data, message):
                    "- Example: 10 days = 1500km mileage\n"
                    "- $200 refundable security deposit"},
             {"file_url": "https://drive.google.com/uc?export=download&id=1gzwY7WJkgfNHf8D1WIT8e10kEHQzzw0M", 
-            "caption": "18"},
+            "caption": ""},
             {"file_url": "https://drive.google.com/uc?export=download&id=1y3zekPU7EncfRcp81Iq6nv46PRFQwM5M", 
              "caption": "Toyota Hlux D4D\n"
                    "- $200/day\n"
@@ -1734,12 +1958,20 @@ def send_car_model(response_data, message):
         "honda_fits": [
             {
                 "file_url": "https://drive.google.com/uc?export=download&id=1UJk-i9t9slFp_GgTbtWJ3N3F7qRCw0E_",
-                "caption": "🚗Honda Fit Rs! PRICE: $40 per day with cumulative 150km mileage. Deposit $200"
+                "caption": "Honda Fit RS\n"
+                        "- $40/day\n"
+                        "- 150km free mileage per day (cumulative)\n"
+                        "- Example: 10 days = 1500km mileage\n"
+                        "- $200 refundable security deposit"
             },
 
             {
                 "file_url": "https://drive.google.com/uc?export=download&id=1ewwSs1ACSmX3rVJGZytDSpF-qqeJII0Q",
-                "caption": "🚗Honda Fit GK3! PRICE: $60 per day with cumulative 150km mileage. Deposit $200"
+                "caption": "Honda Fit GK3\n"
+                        "- $60/day\n"
+                        "- 150km free mileage per day (cumulative)\n"
+                        "- Example: 10 days = 1500km mileage\n"
+                        "- $200 refundable security deposit"
         }],
         "honda_fit_rs": [
             {
@@ -2144,7 +2376,7 @@ def whatsapp_webhook():
 
                 # Instead of sending an empty message to OpenAI, send a meaningful message
                 bot_reply = f"User has sent their GPS location, : {maps_link}.\n"
-                "(If its the destination location provide an estimate towing fee to come and tow them from pickup to their destination place using the given formular)"
+                "(If its the destination location provide an estimate towing fee and Estimated Time of Arrival to come and tow them from pickup to their destination place using the given formular)"
                 bot_reply = query_openai_model(bot_reply, from_number)
                 
                 send_whatsapp_message(from_number, bot_reply, is_bot_message=True)
@@ -2181,6 +2413,14 @@ def whatsapp_webhook():
                 logging.info(f"📷 Image received: {image_id}, determining action...")
 
                 return handle_image_upload(from_number, image_id)
+            
+            if message.get("type") == "audio":
+                audio = message.get("audio", {})
+                if audio.get("voice", False):
+                    logging.info(f"🎙️ Voice note detected from {from_number}")
+                    response_message = "Sorry, Could you please type your message instead?😊"
+                    send_whatsapp_message(from_number, response_message)
+                    return jsonify({"message": "Voice note response sent"}), 200
             
             # ✅ Prevent bot from looping on its own messages
             if message.get("from") == os.getenv("META_PHONE_NUMBER_ID"):
@@ -2220,7 +2460,8 @@ def whatsapp_webhook():
                 "trigger_1", "trigger_2", "trigger_3", "trigger_4", "trigger_5", "trigger_gd6_hilux",
                 "trigger_suv", "trigger_fuel_saver", "trigger_double_cab", "trigger_mid_suv",
                 "trigger_mini_buses", "trigger_luxury", "trigger_axio", "trigger_mercedes_benz_e_class",
-                "trigger_mercedes_benz_c_class", "trigger_all_car_images", "trigger_toyota_gd6_hilux"
+                "trigger_mercedes_benz_c_class", "trigger_all_car_images", "trigger_toyota_gd6_hilux",
+                "trigger_send_pop_notification_to_admin", "trigger_send_freight_notification_to_admin"
             }
 
            # ✅ Find All Matching Trigger Words Inside the Message
@@ -2228,7 +2469,8 @@ def whatsapp_webhook():
 
             if detected_triggers:
                 for primary_trigger in detected_triggers:
-                    logging.info(f"🛑 Detected trigger word in message: {primary_trigger}")
+                    logging.info(f"🛑 Detected trigger word in webhook message: {primary_trigger}")
+
 
                     # ✅ Check if the message is from the bot to prevent infinite loops
                     if from_number == os.getenv("META_PHONE_NUMBER_ID"):  # BOT's own phone number
@@ -2261,18 +2503,33 @@ def whatsapp_webhook():
 
                     elif primary_trigger in ["trigger_payment_button"]:
                         trigger_payment_button(from_number)
+                    
+                    elif primary_trigger in ["trigger_send_pop_notification_to_admin"]:
+                        logging.info(f"🛑 SENDING POP NOTIFICATIO")
+                        send_pop_notification_to_admin(from_number)
+                    
+                    elif primary_trigger in ["trigger_send_freight_notification_to_admin"]:
+                        send_freight_notification_to_admin(from_number)
 
                 return jsonify({"message": "Trigger processed"}), 200  # ✅ Stop further processing after triggers
 
                         
             # ✅ Proceed to process bot response after handling all user triggers
             # ✅ Get the bot's response
-            bot_reply = query_openai_model(incoming_message, from_number)
+            # Try to get an FAQ response first
+            faq_response = get_faq_response(incoming_message, from_number)
+            if faq_response:
+                send_whatsapp_message(from_number, faq_response, is_bot_message=True)
+            else:
+                # Fallback to OpenAI if no FAQ match
+                bot_reply = query_openai_model(incoming_message, from_number)
+                send_whatsapp_message(from_number, bot_reply, is_bot_message=True)
+
             
 
             # ✅ Find All Matching Trigger Words in Bot Reply
-            detected_triggers = [word for word in trigger_words if re.search(rf'\b{word}\b', bot_reply.lower())]    
-            send_whatsapp_message(from_number, bot_reply, is_bot_message=True)
+            #detected_triggers = [word for word in trigger_words if re.search(rf'\b{word}\b', bot_reply.lower())]    
+            #send_whatsapp_message(from_number, bot_reply, is_bot_message=True)
 
         except Exception as e:
             logging.error(f"❌ Error Processing Webhook: {e}")
