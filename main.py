@@ -23,8 +23,33 @@ import openai
 
 
 # Load environment variables from .env file
-load_dotenv()
+#load_dotenv("C:/Users/user/emelda/GUGU APEX/.env")
+# Meta API Credentials
+os.environ["META_PHONE_NUMBER_ID"]="...."
+os.environ["META_ACCESS_TOKEN"]="...."
+os.environ["WEBHOOK_URL"]="h...."
 
+# Admin Number
+#ADMIN_NUMBER=+263779557444
+ADMIN_NUMBER="+263773344079"
+
+# PostgreSQL Database Connection
+# DB_NAME="apex"
+# DB_USER="apex"
+# DB_PASSWORD="apex123"
+# DB_HOST="127.0.0.1"
+# DB_PORT="5432"
+os.environ["DB_PORT"]="5433"
+os.environ["DB_USER"]="apex"
+os.environ["DB_PASSWORD"]="apex123"
+os.environ["DB_HOST"]="127.0.0.1"
+os.environ["DB_NAME"]="apex"
+# Webhook Verification Token
+VERIFY_TOKEN="12345"
+
+#PLAYGROUND CREDENTIALS 
+os.environ['OPENAI_API_KEY'] = "....."
+os.environ["OPENAI_ASSISTANT_ID"]=".....F"
 
 rental_sessions = {}
 towing_sessions = {}
@@ -35,32 +60,43 @@ processed_messages = set()  # ✅ Stores processed message IDs to prevent duplic
 
 
 # Set up environment variables for Meta API
-os.environ['META_PHONE_NUMBER_ID'] 
-os.environ['META_ACCESS_TOKEN']
-os.environ['OPENAI_API_KEY'] 
+# os.environ['META_PHONE_NUMBER_ID'] 
+# os.environ['META_ACCESS_TOKEN']
+# os.environ['OPENAI_API_KEY'] 
 
 
 
  #Initialize OpenAI client
 client = OpenAI(
-    api_key=os.environ.get("OPENAI_API_KEY")
+    api_key=os.environ['OPENAI_API_KEY']
 )
 
-OPENAI_ASSISTANT_ID = os.getenv("OPENAI_ASSISTANT_ID")
+OPENAI_ASSISTANT_ID = os.environ["OPENAI_ASSISTANT_ID"]
 
-# ✅ Configure log rotation to prevent log file from growing indefinitely
-log_handler = RotatingFileHandler(
-    "agent.log", maxBytes=5*1024*1024, backupCount=2  # 5MB log file, keeps 2 backups
+import logging
+from logging.handlers import RotatingFileHandler
+import sys
+
+# Configure RotatingFileHandler for file logging (5MB per file, 2 backups)
+file_handler = RotatingFileHandler("agent.log", maxBytes=5 * 1024 * 1024, backupCount=2)
+file_handler.setLevel(logging.INFO)
+
+# Configure StreamHandler for logging to stdout (console)
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+
+# Define a formatter that includes time, level, filename, function name, and line number
+formatter = logging.Formatter(
+  "%(asctime)s - %(levelname)s - %(filename)s - %(funcName)s - %(lineno)d - %(message)s"
 )
+file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
 
-log_handler.setLevel(logging.INFO)  # ✅ Ignores DEBUG logs
-
+# Set up the basic configuration with both handlers
 logging.basicConfig(
-    handlers=[log_handler],
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    level=logging.INFO  # ✅ Only log INFO, WARNING, ERROR, CRITICAL
+  level=logging.INFO,
+  handlers=[file_handler, console_handler]
 )
-
 # ✅ Suppress Debug Logging from External Libraries (e.g., OpenAI, Flask, HTTP Requests)
 logging.getLogger('werkzeug').setLevel(logging.WARNING)  # Flask's default server logs
 logging.getLogger('inotify.adapters').setLevel(logging.WARNING)  # Inotify logging spam
@@ -80,9 +116,9 @@ app.secret_key = 'ghnvdre5h4562'
 Session(app)
 
 
-
+logging.info("TEST")
 # Admin number to send periodic updates
-ADMIN_NUMBER = os.getenv('ADMIN_NUMBER')
+ADMIN_NUMBER = ADMIN_NUMBER
 
 
 def get_faq_response(query, from_number):
@@ -99,11 +135,13 @@ def get_faq_response(query, from_number):
         "world remit payments": "Name: Tanaka Mupfurutsa, Phone: +263773022984",
         "cash pick-up": "Cash pick-up available at Quest Financial Services.",
         "google review discount": "Enjoy 10% OFF your next booking! Just leave a Google Review.",
+        "mari means money in shona, so marii, imarii, mari? means how much, so if a message is marii mota, its how much for the car, if its imarii tracking, its how much is tracking etc."
+        "marii tracking-:Installation: $50, Monthly: $13 (first 3 months upfront). "
         "promotions and discounts": "Get 10% off your next booking by leaving a Google Review!",
         #"marii": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
         "marii mota": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
         "mari mota": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
-        "mota": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
+        #"mari": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
 
         # Car Rental Service
         "rental prices": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
@@ -165,17 +203,18 @@ def get_db_connection():
     """Creates and returns a PostgreSQL database connection."""
     try:
         conn = psycopg2.connect(
-            dbname=os.getenv('DB_NAME'),
-            user=os.getenv('DB_USER'),
-            password=os.getenv('DB_PASSWORD'),
-            host=os.getenv('DB_HOST'),
-            port=os.getenv('DB_PORT')
+            dbname=os.environ["DB_NAME"],
+            user=os.environ["DB_USER"],
+            password=os.environ["DB_PASSWORD"],
+            host=os.environ["DB_HOST"],
+            port=os.environ["DB_PORT"]
             )
+        logging.info("DB Connection Succesful")
         return conn
     except psycopg2.Error as e:
         logging.error(f"Database connection error: {e}")
         return None
-
+get_db_connection()
 # Log new conversation or updates in the database
 def log_conversation(from_number, message, bot_reply, status):
     """
@@ -425,8 +464,8 @@ def trigger_payment_button(from_number):
 def send_whatsapp_interactive_message(to, payload, max_retries=3):
     """Sends an interactive WhatsApp message, such as payment buttons."""
     start_time = time.time()
-    PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID")
-    ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
+    PHONE_NUMBER_ID = os.environ["META_PHONE_NUMBER_ID"]
+    ACCESS_TOKEN = os.environ["META_ACCESS_TOKEN"]
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
@@ -918,11 +957,11 @@ last_sent_messages = {}
 
 processed_triggers = set()  # ✅ Store processed trigger messages to prevent duplication
 
-def send_whatsapp_message(to, message=None, max_retries=3, is_bot_message=True):
+def send_whatsapp_message(to, message=None, max_retries=3, is_bot_message=False):
     """Sends a WhatsApp message while ensuring triggers are processed only once and avoids repeating recent messages."""
     start_time = time.time()
-    PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID")
-    ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
+    PHONE_NUMBER_ID = os.environ["META_PHONE_NUMBER_ID"]
+    ACCESS_TOKEN = os.environ["META_ACCESS_TOKEN"]
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
@@ -943,9 +982,8 @@ def send_whatsapp_message(to, message=None, max_retries=3, is_bot_message=True):
     #     logging.info(f"🔄 Message '{message_clean}' was recently sent. Sending fallback response instead.")
     #     send_text_message(to, "Hang on...")  # ✅ Send fallback response
     #     return True  # ✅ Stop further processing
-    if message_clean in last_sent_messages:
-        return True
     
+
     # ✅ Store the message in user_message_history
     if to not in user_message_history:
         user_message_history[to] = []
@@ -993,8 +1031,8 @@ def send_whatsapp_message(to, message=None, max_retries=3, is_bot_message=True):
                 logging.info(f"📨 Sending full message to user before trigger: '{message_without_trigger}'")
                 send_text_message(to, message_without_trigger)
             
-            # send_to_webhook(to, detected_trigger)
-            # logging.info(f"✅ Successfully sent trigger word '{detected_trigger}' to webhook.")
+            send_to_webhook(to, detected_trigger)
+            logging.info(f"✅ Successfully sent trigger word '{detected_trigger}' to webhook.")
 
             return True  # ✅ Exit here so we don't request another bot reply
 
@@ -1013,8 +1051,8 @@ def send_text_message(to, text):
         logging.warning("⚠️ Attempted to send an empty message. Skipping WhatsApp request.")
         return False
 
-    PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID")
-    ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
+    PHONE_NUMBER_ID = os.environ["META_PHONE_NUMBER_ID"]
+    ACCESS_TOKEN = os.environ["META_ACCESS_TOKEN"]
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
 
     headers = {
@@ -1040,15 +1078,6 @@ def send_text_message(to, text):
             execution_time = time.time() - start_time
             logging.info(f"✅ WhatsApp message sent to {to} in {execution_time:.2f} seconds on attempt {attempt + 1}")
             logging.debug(f"📨 WhatsApp API Response: {response.json()}")
-
-            # ✅ Store the last 4 received messages for this user
-            if to not in last_sent_messages:
-                last_sent_messages[to] = []
-            last_sent_messages[to].append(text)
-
-            # ✅ Keep only the last 5 messages (remove older ones)
-            if len(last_sent_messages[to]) > 5:
-                last_sent_messages[to].pop(0)
             return True
 
         except requests.RequestException as e:
@@ -1066,7 +1095,7 @@ def send_to_webhook(from_number, message):
     Sends a detected trigger word to the webhook instead of WhatsApp, ensuring it matches a valid WhatsApp webhook format.
     """
 
-    webhook_url = os.getenv("WEBHOOK_URL")  # Store webhook URL in .env
+    webhook_url = os.environ["WEBHOOK_URL"]  # Store webhook URL in .env
 
     # Generate a valid WhatsApp-like message ID
     message_id = f"wamid.{uuid.uuid4().hex[:32]}"
@@ -1290,7 +1319,7 @@ def send_pop_notification_to_admin(from_number):
 
     # ✅ Generate Unique Reference Number
     #ref_number = generate_ref_number()
-    drive_link = drive_links[from_number]
+    drive_link = drive_links.get(from_number, "No Drive Link Available")
     conn = get_db_connection()
     if not conn:
         return False  # If DB fails, assume message is new (to avoid blocking processing)
@@ -1315,7 +1344,7 @@ def send_pop_notification_to_admin(from_number):
         f"👤 *Client:* {from_number}\n"
         f"🔢 *Transaction Details (ID):*\n"
         f"📌 *Reference Number:* {ref_number}\n"
-        f"   *Drive link:* {drive_links[from_number]}"
+        f"   *Drive link:* {drive_link}"
         f" *Next Steps:* Validate and Reach out to user"
     )
 
@@ -1435,7 +1464,7 @@ def fetch_media_url(media_id):
     """
     Fetches the direct URL of a WhatsApp media file.
     """
-    access_token = os.getenv("META_ACCESS_TOKEN")  # Your WhatsApp API token
+    access_token = os.environ["META_ACCESS_TOKEN"]  # Your WhatsApp API token
 
     headers = {
         "Authorization": f"Bearer {access_token}",  
@@ -1468,8 +1497,8 @@ def send_whatsapp_file(recipient, file_url, file_type="image", caption=None):
     """
     logging.info(f"📤 Sending file via WhatsApp to {recipient}...")
 
-    phone_number_id = os.getenv("META_PHONE_NUMBER_ID")
-    access_token = os.getenv("META_ACCESS_TOKEN")
+    phone_number_id = os.environ["META_PHONE_NUMBER_ID"]
+    access_token = os.environ["META_ACCESS_TOKEN"]
 
     if not phone_number_id or not access_token:
         logging.error("❌ Missing API credentials.")
@@ -2308,7 +2337,7 @@ def whatsapp_webhook():
     """
     
     if request.method == 'GET':
-        verify_token = os.getenv('VERIFY_TOKEN')
+        verify_token = VERIFY_TOKEN
         hub_mode = request.args.get('hub.mode')
         hub_token = request.args.get('hub.verify_token')
         hub_challenge = request.args.get('hub.challenge')
@@ -2328,8 +2357,7 @@ def whatsapp_webhook():
         
     # ✅ WhatsApp Message Handling
     elif request.method == 'POST':
-        meta_phone_number_id = os.getenv('META_PHONE_NUMBER_ID')  # Ensure the environment variable is set
-        #meta_access_token = os.getenv('META_ACCESS_TOKEN')  # Ensure the environment variable is set
+        meta_phone_number_id = os.environ["META_PHONE_NUMBER_ID"]  # Ensure the environment variable is set
         url = f"https://graph.facebook.com/v13.0/{meta_phone_number_id}/messages"
 
         try:
@@ -2352,7 +2380,7 @@ def whatsapp_webhook():
             # ✅ Check if there are messages
             if 'messages' not in value:
                 logging.warning("❌ No messages found in webhook event.")
-                return jsonify({"error": "No messages found"}), 400
+                return jsonify({"error": "No messages found 123"}), 400
             
             if "messages" in data.get("entry", [{}])[0].get("changes", [{}])[0].get("value", {}):
                 logging.info("📩 Received new WhatsApp message. Processing...")
@@ -2423,7 +2451,7 @@ def whatsapp_webhook():
                     return jsonify({"message": "Voice note response sent"}), 200
             
             # ✅ Prevent bot from looping on its own messages
-            if message.get("from") == os.getenv("META_PHONE_NUMBER_ID"):
+            if message.get("from") == os.environ["META_PHONE_NUMBER_ID"]:
                 logging.info(f"🛑 Ignoring bot-generated message to prevent infinite loops: {message.get('text', {}).get('body', '')}")
                 return jsonify({"message": "Bot message ignored"}), 200
 
@@ -2445,7 +2473,7 @@ def whatsapp_webhook():
                 user_message_history[from_number].pop(0)
 
              # ✅ Check for inactivity and update session summary if needed
-            check_inactivity()
+            # check_inactivity()
 
             #incoming_message_clean = incoming_message.strip().lower() if incoming_message else ""
 
@@ -2469,11 +2497,10 @@ def whatsapp_webhook():
 
             if detected_triggers:
                 for primary_trigger in detected_triggers:
-                    logging.info(f"🛑 Detected trigger word in webhook message: {primary_trigger}")
-
+                    logging.info(f"🛑 Detected trigger word in message: {primary_trigger}")
 
                     # ✅ Check if the message is from the bot to prevent infinite loops
-                    if from_number == os.getenv("META_PHONE_NUMBER_ID"):  # BOT's own phone number
+                    if from_number == os.environ["META_PHONE_NUMBER_ID"]:  # BOT's own phone number
                         logging.info(f"✅ Skipping bot-generated trigger to prevent infinite loop: {primary_trigger}")
                         return jsonify({"message": "Bot trigger ignored"}), 200
 
@@ -2505,7 +2532,6 @@ def whatsapp_webhook():
                         trigger_payment_button(from_number)
                     
                     elif primary_trigger in ["trigger_send_pop_notification_to_admin"]:
-                        logging.info(f"🛑 SENDING POP NOTIFICATIO")
                         send_pop_notification_to_admin(from_number)
                     
                     elif primary_trigger in ["trigger_send_freight_notification_to_admin"]:
@@ -2535,76 +2561,76 @@ def whatsapp_webhook():
             logging.error(f"❌ Error Processing Webhook: {e}")
             logging.error(traceback.format_exc())
 
-def check_inactivity():
-    """
-    Check if users have been inactive for more than 3 hours and update session memory if needed.
-    """
-    conn = get_db_connection()
-    if not conn:
-        return
+# def check_inactivity():
+#     """
+#     Check if users have been inactive for more than 3 hours and update session memory if needed.
+#     """
+#     conn = get_db_connection()
+#     if not conn:
+#         return
 
-    try:
-        cursor = conn.cursor()
+#     try:
+#         cursor = conn.cursor()
 
-        # 1️⃣ Retrieve all distinct user phone numbers
-        cursor.execute('SELECT DISTINCT contact_number FROM apex_customers')
-        users = cursor.fetchall()
+#         # 1️⃣ Retrieve all distinct user phone numbers
+#         cursor.execute('SELECT DISTINCT contact_number FROM apex_customers')
+#         users = cursor.fetchall()
 
-        for user in users:
-            from_number = user[0]
+#         for user in users:
+#             from_number = user[0]
 
-            # 2️⃣ Retrieve the timestamp of the last message received
-            cursor.execute('''
-                SELECT timestamp FROM conversations
-                WHERE from_number = %s
-                ORDER BY timestamp DESC
-                LIMIT 1
-            ''', (from_number,))
-            last_message = cursor.fetchone()
+#             # 2️⃣ Retrieve the timestamp of the last message received
+#             cursor.execute('''
+#                 SELECT timestamp FROM conversations
+#                 WHERE from_number = %s
+#                 ORDER BY timestamp DESC
+#                 LIMIT 1
+#             ''', (from_number,))
+#             last_message = cursor.fetchone()
 
-            if not last_message:
-                logging.info(f"🔍 No previous activity found for {from_number}. Skipping inactivity check.")
-                continue
+#             if not last_message:
+#                 logging.info(f"🔍 No previous activity found for {from_number}. Skipping inactivity check.")
+#                 continue
 
-            last_message_time = last_message[0]
+#             last_message_time = last_message[0]
 
-            # 3️⃣ Retrieve the timestamp of the last session summary
-            cursor.execute('''
-                SELECT created_at FROM user_memory 
-                WHERE contact_number = %s AND memory_key = 'session_summary'
-                ORDER BY created_at DESC
-                LIMIT 1
-            ''', (from_number,))
-            last_summary = cursor.fetchone()
-            last_summary_time = last_summary[0] if last_summary else None
+#             # 3️⃣ Retrieve the timestamp of the last session summary
+#             cursor.execute('''
+#                 SELECT created_at FROM user_memory 
+#                 WHERE contact_number = %s AND memory_key = 'session_summary'
+#                 ORDER BY created_at DESC
+#                 LIMIT 1
+#             ''', (from_number,))
+#             last_summary = cursor.fetchone()
+#             last_summary_time = last_summary[0] if last_summary else None
 
-            now = datetime.now()
+#             now = datetime.now()
 
-            # 4️⃣ Calculate the time since the last summary and last message
-            time_since_last_summary = (now - last_summary_time).total_seconds() if last_summary_time else None
-            time_since_last_message = (now - last_message_time).total_seconds()
+#             # 4️⃣ Calculate the time since the last summary and last message
+#             time_since_last_summary = (now - last_summary_time).total_seconds() if last_summary_time else None
+#             time_since_last_message = (now - last_message_time).total_seconds()
 
-            # 5️⃣ Ensure at least *3 hours (10800 seconds) have passed* & new messages exist
-            if (last_summary_time is None) or (
-                time_since_last_summary > 10800 and last_message_time > last_summary_time
-            ):
-                logging.info(f"🔄 Session for {from_number} summarized due to inactivity and new messages detected.")
+#             # 5️⃣ Ensure at least *3 hours (10800 seconds) have passed* & new messages exist
+#             if (last_summary_time is None) or (
+#                 time_since_last_summary > 10800 and last_message_time > last_summary_time
+#             ):
+#                 logging.info(f"🔄 Session for {from_number} summarized due to inactivity and new messages detected.")
 
-        cursor.close()
-        conn.close()
+#         cursor.close()
+#         conn.close()
 
-    except psycopg2.Error as e:
-        logging.error(f"Database error while checking inactivity: {e}")
+#     except psycopg2.Error as e:
+#         logging.error(f"Database error while checking inactivity: {e}")
 
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+#     finally:
+#         if cursor:
+#             cursor.close()
+#         if conn:
+#             conn.close()
 
  
 
-schedule.every(3).hours.do(check_inactivity)
+# schedule.every(3).hours.do(check_inactivity)
 
 def run_scheduler():
     while True:
