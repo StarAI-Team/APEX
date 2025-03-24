@@ -25,31 +25,31 @@ import openai
 # Load environment variables from .env file
 #load_dotenv("C:/Users/user/emelda/GUGU APEX/.env")
 # Meta API Credentials
-os.environ["META_PHONE_NUMBER_ID"]="...."
-os.environ["META_ACCESS_TOKEN"]="...."
-os.environ["WEBHOOK_URL"]="h...."
+os.environ["META_PHONE_NUMBER_ID"]="..."
+os.environ["META_ACCESS_TOKEN"]="..."
+os.environ["WEBHOOK_URL"]="...."
 
 # Admin Number
-#ADMIN_NUMBER=+263779557444
-ADMIN_NUMBER="+263773344079"
+#ADMIN_NUMBER=...
+ADMIN_NUMBER="..."
 
 # PostgreSQL Database Connection
-# DB_NAME="apex"
-# DB_USER="apex"
-# DB_PASSWORD="apex123"
+# DB_NAME=" "
+# DB_USER=" "
+# DB_PASSWORD=" "
 # DB_HOST="127.0.0.1"
 # DB_PORT="5432"
-os.environ["DB_PORT"]="5433"
-os.environ["DB_USER"]="apex"
-os.environ["DB_PASSWORD"]="apex123"
+os.environ["DB_PORT"]="5432"
+os.environ["DB_USER"]=""
+os.environ["DB_PASSWORD"]=""
 os.environ["DB_HOST"]="127.0.0.1"
 os.environ["DB_NAME"]="apex"
 # Webhook Verification Token
 VERIFY_TOKEN="12345"
 
 #PLAYGROUND CREDENTIALS 
-os.environ['OPENAI_API_KEY'] = "....."
-os.environ["OPENAI_ASSISTANT_ID"]=".....F"
+os.environ['OPENAI_API_KEY'] = "sk-proj---9ysgvQnid8---wA"
+os.environ["OPENAI_ASSISTANT_ID"]=""
 
 rental_sessions = {}
 towing_sessions = {}
@@ -78,7 +78,7 @@ from logging.handlers import RotatingFileHandler
 import sys
 
 # Configure RotatingFileHandler for file logging (5MB per file, 2 backups)
-file_handler = RotatingFileHandler("agent.log", maxBytes=5 * 1024 * 1024, backupCount=2)
+file_handler = RotatingFileHandler("agent.log", maxBytes=5 * 1024 * 1024, backupCount=2, encoding='utf-8')
 file_handler.setLevel(logging.INFO)
 
 # Configure StreamHandler for logging to stdout (console)
@@ -203,15 +203,16 @@ def get_db_connection():
     """Creates and returns a PostgreSQL database connection."""
     try:
         conn = psycopg2.connect(
-            dbname=os.environ["DB_NAME"],
-            user=os.environ["DB_USER"],
-            password=os.environ["DB_PASSWORD"],
-            host=os.environ["DB_HOST"],
-            port=os.environ["DB_PORT"]
+            dbname="apex",
+            user="apex",
+            password="apex123",
+            host="127.0.0.1",
+            port="5433"
             )
         logging.info("DB Connection Succesful")
         return conn
     except psycopg2.Error as e:
+        traceback.print_exc()
         logging.error(f"Database connection error: {e}")
         return None
 get_db_connection()
@@ -236,6 +237,7 @@ def log_conversation(from_number, message, bot_reply, status):
         logging.info("✅ Conversation logged successfully.")
     
     except psycopg2.Error as e:
+        traceback.print_exc()
         logging.warning(f"Database error while logging conversation: {e}")
     
     finally:
@@ -278,10 +280,12 @@ def get_customer_name(contact_number):
             return "Guest"  # Return a default name instead of None
 
     except psycopg2.Error as e:
+        traceback.print_exc()
         logging.error(f"Database error while fetching name: {e}")
         return "Guest"
 
     except Exception as e:
+        traceback.print_exc()
         logging.error(f"Unexpected error: {e}")
         return "Guest"
 
@@ -311,6 +315,7 @@ def get_user_thread(from_number):
         conn.close()
         return result[0] if result else None
     except psycopg2.Error as e:
+        traceback.print_exc()
         logging.error(f"❌ Database error retrieving thread for {from_number}: {e}")
         return None
 
@@ -332,6 +337,7 @@ def save_user_thread(from_number, thread_id):
         conn.close()
         logging.info(f"✅ Thread saved for {from_number}: {thread_id}")
     except psycopg2.Error as e:
+        traceback.print_exc()
         logging.error(f"❌ Database error saving thread for {from_number}: {e}")
 
     
@@ -487,6 +493,7 @@ def send_whatsapp_interactive_message(to, payload, max_retries=3):
             return True
 
         except requests.RequestException as e:
+            traceback.print_exc()
             logging.warning(f"❌ WhatsApp API Error on attempt {attempt + 1}: {e}")
             logging.error(f"❌ WhatsApp API response: {response.text}")
             time.sleep(2)
@@ -610,6 +617,7 @@ def store_service_request(from_number, service_type, ref_number, user_name, driv
         logging.info(f"✅ Service request stored in DB: {ref_number}")
 
     except Exception as e:
+        traceback.print_exc()
         logging.error(f"❌ Error storing service request: {e}")
 
     finally:
@@ -686,9 +694,10 @@ def query_openai_model(user_message, from_number):
         return bot_reply
 
     except Exception as e:
+        traceback.print_exc()
         logging.error(f"❌ OpenAI API Error: {str(e)}")
         #send_whatsapp_message(bot_reply)
-        return "Hang on..."
+        return None
 
 
 def check_and_resolve_active_run(thread_id, from_number, last_message):
@@ -747,6 +756,7 @@ def check_and_resolve_active_run(thread_id, from_number, last_message):
             logging.error(f"❌ OpenAI API Error: {response.status_code} - {response.text}")
 
     except requests.exceptions.RequestException as e:
+        traceback.print_exc()
         logging.error(f"❌ Failed to check runs due to network error: {e}")
     
     return None  # No need to switch threads if there's no active run
@@ -806,6 +816,7 @@ def mark_file_as_sent(message_id):
         logging.info(f"✅ Marked file message {message_id} as sent.")
 
     except psycopg2.Error as e:
+        traceback.print_exc()
         logging.error(f"❌ Database error updating file message status: {e}")
 
     finally:
@@ -830,6 +841,7 @@ def mark_response_as_sent(response_id):
         conn.commit()
         logging.info(f"✅ Marked response {response_id} as processed.")
     except psycopg2.Error as e:
+        traceback.print_exc()
         logging.error(f"❌ Database error updating response status: {e}")
     finally:
         cursor.close()
@@ -863,6 +875,7 @@ def increment_file_retry_count(message_id):
         logging.info(f"🔄 Increased retry count for file message {message_id}")
 
     except psycopg2.Error as e:
+        traceback.print_exc()
         logging.error(f"❌ Database error updating retry count: {e}")
 
     finally:
@@ -887,6 +900,7 @@ def get_pending_responses():
         pending_responses = [{"id": row[0], "from_number": row[1], "message": row[2]} for row in cursor.fetchall()]
         return pending_responses
     except psycopg2.Error as e:
+        traceback.print_exc()
         logging.error(f"❌ Database error retrieving pending responses: {e}")
         return []
     finally:
@@ -915,6 +929,7 @@ def get_pending_file_responses():
         return pending_files
 
     except psycopg2.Error as e:
+        traceback.print_exc()
         logging.error(f"❌ Database error retrieving pending file messages: {e}")
         return []
     
@@ -945,6 +960,7 @@ def save_pending_response(recipient, file_url, file_type="image", caption=None, 
         logging.info(f"💾 Saved failed file send for {recipient}, will retry later.")
 
     except psycopg2.Error as e:
+        traceback.print_exc()
         logging.error(f"❌ Database error saving pending file message: {e}")
 
     finally:
@@ -982,6 +998,8 @@ def send_whatsapp_message(to, message=None, max_retries=3, is_bot_message=False)
     #     logging.info(f"🔄 Message '{message_clean}' was recently sent. Sending fallback response instead.")
     #     send_text_message(to, "Hang on...")  # ✅ Send fallback response
     #     return True  # ✅ Stop further processing
+    if message_clean in last_sent_messages:
+        return True
     
 
     # ✅ Store the message in user_message_history
@@ -1078,9 +1096,18 @@ def send_text_message(to, text):
             execution_time = time.time() - start_time
             logging.info(f"✅ WhatsApp message sent to {to} in {execution_time:.2f} seconds on attempt {attempt + 1}")
             logging.debug(f"📨 WhatsApp API Response: {response.json()}")
+            # ✅ Store the last 4 received messages for this user
+            if to not in last_sent_messages:
+                last_sent_messages[to] = []
+            last_sent_messages[to].append(text)
+
+            # ✅ Keep only the last 5 messages (remove older ones)
+            if len(last_sent_messages[to]) > 5:
+                last_sent_messages[to].pop(0)
             return True
 
         except requests.RequestException as e:
+            traceback.print_exc()
             logging.warning(f"❌ WhatsApp API Error on attempt {attempt + 1}: {e}")
             logging.error(f"❌ WhatsApp API response: {response.text}")
             time.sleep(2)
@@ -1154,6 +1181,7 @@ def send_to_webhook(from_number, message):
         response.raise_for_status()  # Raises an error if response is not 200
         logging.info(f"✅ Trigger word '{message}' sent to webhook successfully.")
     except requests.RequestException as e:
+        traceback.print_exc()
         logging.error(f"❌ Webhook request failed: {e}")
 
 
@@ -1223,6 +1251,7 @@ def user_exists(from_number):
         return False  # User does not exist
 
     except psycopg2.Error as e:
+        traceback.print_exc()
         logging.error(f"❌ Database error while checking user {from_number}: {e.pgcode} - {e.pgerror}")
         return False  # Assume user doesn't exist if an error occurs
     finally:
@@ -1276,6 +1305,7 @@ def send_freight_notification_to_admin(from_number, message):
         quantity = freight_details.get("quantity", "Unknown")
         destination = freight_details.get("destination", "Unknown")
     except Exception as e:
+        traceback.print_exc()
         logging.error(f"Error parsing freight details: {str(e)}")
         return "An error occurred while processing the freight details."
 
@@ -1295,6 +1325,7 @@ def send_freight_notification_to_admin(from_number, message):
         send_whatsapp_message(ADMIN_NUMBER, admin_message)
         logging.info(f"Notification sent to admin: {admin_message}")
     except Exception as e:
+        traceback.print_exc()
         logging.error(f"Failed to send notification to admin: {str(e)}")
         return "Failed to send freight notification to admin."
 
@@ -1307,6 +1338,7 @@ def send_freight_notification_to_admin(from_number, message):
 
         logging.info(f"Admin notified: {admin_message}")
     except Exception as e:
+        traceback.print_exc()
         logging.error(f"Failed to notify user: {str(e)}")
         return "Failed to send notification to the user."
 
@@ -1334,6 +1366,7 @@ def send_pop_notification_to_admin(from_number):
             ref_number = exists
             return exists
     except psycopg2.Error as e:
+        traceback.print_exc()
         logging.error(f"❌ Database error while retrieving ref_number: {e}")
         return False  # If DB error, assume message is new to prevent blocking
 
@@ -1530,6 +1563,7 @@ def send_whatsapp_file(recipient, file_url, file_type="image", caption=None):
         logging.info(f"✅ File sent successfully to {recipient}: {file_url}")
 
     except requests.exceptions.RequestException as e:
+        traceback.print_exc()
         logging.error(f"❌ Failed to send file to {recipient}. Retrying later.")
 
         # ✅ Save pending response with retry count
@@ -2287,6 +2321,7 @@ def is_duplicate_message(message_id):
         return False  # ✅ Message is new, process it
 
     except psycopg2.Error as e:
+        traceback.print_exc()
         logging.error(f"❌ Database error while checking duplicate messages: {e}")
         return False  # If DB error, assume message is new to prevent blocking
 
@@ -2314,6 +2349,7 @@ def save_location(from_number, lat, lon):
         return f"✅ Location saved: {location_text}"
 
     except psycopg2.Error as e:
+        traceback.print_exc()
         logging.error(f"❌ Database error while saving location: {e}")
         return "❌ Error saving location."
 
@@ -2532,6 +2568,7 @@ def whatsapp_webhook():
                         trigger_payment_button(from_number)
                     
                     elif primary_trigger in ["trigger_send_pop_notification_to_admin"]:
+                        logging.info("Sending POP to Admin")
                         send_pop_notification_to_admin(from_number)
                     
                     elif primary_trigger in ["trigger_send_freight_notification_to_admin"]:
@@ -2558,6 +2595,7 @@ def whatsapp_webhook():
             #send_whatsapp_message(from_number, bot_reply, is_bot_message=True)
 
         except Exception as e:
+            traceback.print_exc()
             logging.error(f"❌ Error Processing Webhook: {e}")
             logging.error(traceback.format_exc())
 
