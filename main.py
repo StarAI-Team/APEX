@@ -25,31 +25,31 @@ import openai
 # Load environment variables from .env file
 #load_dotenv("C:/Users/user/emelda/GUGU APEX/.env")
 # Meta API Credentials
-os.environ["META_PHONE_NUMBER_ID"]="..."
+os.environ["META_PHONE_NUMBER_ID"]=".."
 os.environ["META_ACCESS_TOKEN"]="..."
-os.environ["WEBHOOK_URL"]="...."
+os.environ["WEBHOOK_URL"]="..."
 
 # Admin Number
-#ADMIN_NUMBER=...
-ADMIN_NUMBER="..."
+#ADMIN_NUMBER=+263779557444
+ADMIN_NUMBER="+263773344079"
 
 # PostgreSQL Database Connection
-# DB_NAME=" "
-# DB_USER=" "
-# DB_PASSWORD=" "
+# DB_NAME="apex"
+# DB_USER="apex"
+# DB_PASSWORD="apex123"
 # DB_HOST="127.0.0.1"
 # DB_PORT="5432"
-os.environ["DB_PORT"]="5432"
-os.environ["DB_USER"]=""
-os.environ["DB_PASSWORD"]=""
+os.environ["DB_PORT"]=".."
+os.environ["DB_USER"]="..."
+os.environ["DB_PASSWORD"]="..."
 os.environ["DB_HOST"]="127.0.0.1"
-os.environ["DB_NAME"]="apex"
+os.environ["DB_NAME"]="..."
 # Webhook Verification Token
 VERIFY_TOKEN="12345"
 
 #PLAYGROUND CREDENTIALS 
-os.environ['OPENAI_API_KEY'] = "sk-proj---9ysgvQnid8---wA"
-os.environ["OPENAI_ASSISTANT_ID"]=""
+os.environ['OPENAI_API_KEY'] = "sk-proj--V8l0RH...wA"
+os.environ["OPENAI_ASSISTANT_ID"]="as..."
 
 rental_sessions = {}
 towing_sessions = {}
@@ -397,19 +397,20 @@ def create_new_thread(from_number, last_message):
         "messages": [
             {
                 "content": f"This is a new user whose contact number is {from_number}. ASK FOR THE USER'S FULL NAME FIRST. Respond with 12 words or less and to the point"
-                            "Avoid unnecessary details. NB whenever a car model or class is mentioned whether from user or from you at any point, ALWAYS SEND THE TRIGGER FOR THE CAR MODEL OR CAR CLASS TO SHOW IMAGES as well"
+                            "NB whenever a car model or class is mentioned whether from user or from you at any point, ALWAYS SEND THE TRIGGER FOR THE Images of CAR MODEL OR CAR CLASS TO SHOW IMAGES as well"
                             "(Once name is captured, don't ask for it again when getting service requirements) add emojis but sparingly not all messages. Use emojis here and there"
                             "For rental ALWAYS ask for rent out date and return date, for towing ask for pickup separately first and destination location on its own then give user an estimate towing fee"
                             "For towing ALWAYS send the estimate fee and Estimated time of arrival right after getting pickup and destination address before asking for car image to confirm towing"
                             "If you respond and do not get a clear answer, politely acknowledge the user's response and ask your question but in a different way"
                             "Users are from Zimbabwe, so they speak English, Shona and maybe Ndebele. typically mixed"
-                            "For tracking, on the requirements, ask for the Calling number if its different from the whatsapp Number    "
+                            "If a user has sent you their License or ID before do not ask for it again when they make a request that neeeds those uploads, instead recall their details and proceed to trigger payment button "
+                            "For tracking, on the requirements, ask for the Calling number if its different from the whatsapp Number"
                             "Do not mention the user's name in every message unless neccesary. After gathering alL details for towing, send the trigger_payment_button function"
                             "If the upload is appropriate to the conversation flow then you can send the payment trigger. e.g. if user sent ID when renting a car then you can then send the payment trigger if not ask them to send the appropriate image first",
                 "role": "assistant"
             },
             {"content": "All responses must be very short. concise but friendly", "role": "assistant"},  # ✅ Provide context
-            {"content": "Hi", "role": "user"}  # ✅ Include last user message
+            {"content": "Always show me Images If I mention a car model or class", "role": "user"}  # ✅ Include last user message
         ]
     }
 
@@ -697,7 +698,7 @@ def query_openai_model(user_message, from_number):
         traceback.print_exc()
         logging.error(f"❌ OpenAI API Error: {str(e)}")
         #send_whatsapp_message(bot_reply)
-        return None
+        return "Hang on..."
 
 
 def check_and_resolve_active_run(thread_id, from_number, last_message):
@@ -989,7 +990,7 @@ def send_whatsapp_message(to, message=None, max_retries=3, is_bot_message=False)
         logging.warning("⚠️ Attempted to send an empty message. Skipping WhatsApp request.")
         return False
 
-    message_clean = message.strip() if isinstance(message, str) else ""
+    message_clean = message.strip().lower() if isinstance(message, str) else ""
 
     logging.info(f"📨 Processing message: '{message_clean}' from {to}")
 
@@ -1000,7 +1001,6 @@ def send_whatsapp_message(to, message=None, max_retries=3, is_bot_message=False)
     #     return True  # ✅ Stop further processing
     if message_clean in last_sent_messages:
         return True
-    
 
     # ✅ Store the message in user_message_history
     if to not in user_message_history:
@@ -1096,7 +1096,6 @@ def send_text_message(to, text):
             execution_time = time.time() - start_time
             logging.info(f"✅ WhatsApp message sent to {to} in {execution_time:.2f} seconds on attempt {attempt + 1}")
             logging.debug(f"📨 WhatsApp API Response: {response.json()}")
-            # ✅ Store the last 4 received messages for this user
             if to not in last_sent_messages:
                 last_sent_messages[to] = []
             last_sent_messages[to].append(text)
@@ -1351,6 +1350,7 @@ def send_pop_notification_to_admin(from_number):
 
     # ✅ Generate Unique Reference Number
     #ref_number = generate_ref_number()
+    logging.info("POP def")
     drive_link = drive_links.get(from_number, "No Drive Link Available")
     conn = get_db_connection()
     if not conn:
@@ -1362,9 +1362,10 @@ def send_pop_notification_to_admin(from_number):
         # ✅ Check if message_id exists in the database
         cursor.execute("SELECT ref_number FROM services WHERE wa_id = %s ORDER BY created_at DESC LIMIT 1;", (from_number,))
         exists = cursor.fetchone()[0]
+
+        logging.info(f"DB inserted: {exists}")
         if exists:
             ref_number = exists
-            return exists
     except psycopg2.Error as e:
         traceback.print_exc()
         logging.error(f"❌ Database error while retrieving ref_number: {e}")
@@ -1372,16 +1373,17 @@ def send_pop_notification_to_admin(from_number):
 
     # ✅ Query OpenAI for Freight Details
     openai_prompt = (
-        f"A user with phone number {from_number} has uploaded POP. Generate a summary for the admin in this format\n"
+        f"A user with phone number {from_number} has uploaded POP with drive link as {drive_links.get(from_number)}. Generate a summary for the admin in this format\n"
         f"📢 *New POP Upload!*\n"
         f"👤 *Client:* {from_number}\n"
         f"🔢 *Transaction Details (ID):*\n"
         f"📌 *Reference Number:* {ref_number}\n"
-        f"   *Drive link:* {drive_link}"
+        f"   *Drive link:* [drive_link]"
         f" *Next Steps:* Validate and Reach out to user"
     )
 
     pop_details = query_openai_model(openai_prompt, from_number)
+    logging.info(pop_details)
 
     if not pop_details:
         logging.warning("⚠️ OpenAI failed to extract POP details.")
@@ -1392,7 +1394,7 @@ def send_pop_notification_to_admin(from_number):
     #user_reply = f"Got it! Please hold on while I connect you with our freight operator. Your reference number is {ref_number}."
     send_whatsapp_message(ADMIN_NUMBER, pop_details)
     
-    return "Freight notification sent successfully."
+    return "POP notification sent successfully."
 
 
 def process_uploaded_media(message):
@@ -1475,7 +1477,7 @@ def process_uploaded_media(message):
     # ✅ Send Final Response to User
     final_response = extracted_text
     send_whatsapp_message(from_number, final_response, is_bot_message=True)
-    bot_reply = query_openai_model("Send the payment trigger only if the uploaded file matches the required context (e.g., ID for car rental).If its a Proof of Payment with transaction ID or ref number send the trigger_send_pop_notification_to_admin function.  Otherwise, prompt the user to upload the correct file first. (Take Note of user's Name)",from_number)
+    bot_reply = query_openai_model("Reply only with the payment trigger if the uploaded file matches the required context (e.g., ID for car rental).If its a Proof of Payment with transaction ID or ref number send the trigger_send_pop_notification_to_admin function only.  Otherwise, prompt the user to upload the correct file first. (Take Note of user's Name)",from_number)
     # # # ✅ Send Summary to Admin
     # # admin_summary = f"📢 *New Image Upload Processed!*\n📞 *Contact:* {from_number}\n📸 *Image Link:* {drive_link}\n📝 *AI Analysis:* {extracted_text}"
     send_whatsapp_message(from_number, bot_reply)
