@@ -19,15 +19,16 @@ import uuid
 import time  # For timestamps
 from logging.handlers import RotatingFileHandler
 import openai
+import random
 
 
 
 # Load environment variables from .env file
 #load_dotenv("C:/Users/user/emelda/GUGU APEX/.env")
 # Meta API Credentials
-os.environ["META_PHONE_NUMBER_ID"]=".."
+os.environ["META_PHONE_NUMBER_ID"]="577823865414380"
 os.environ["META_ACCESS_TOKEN"]="..."
-os.environ["WEBHOOK_URL"]="..."
+os.environ["WEBHOOK_URL"]="htt...ook"
 
 # Admin Number
 #ADMIN_NUMBER=+263779557444
@@ -39,17 +40,17 @@ ADMIN_NUMBER="+263773344079"
 # DB_PASSWORD="apex123"
 # DB_HOST="127.0.0.1"
 # DB_PORT="5432"
-os.environ["DB_PORT"]=".."
+os.environ["DB_PORT"]="5432"
 os.environ["DB_USER"]="..."
 os.environ["DB_PASSWORD"]="..."
-os.environ["DB_HOST"]="127.0.0.1"
+os.environ["DB_HOST"]="127.0......1"
 os.environ["DB_NAME"]="..."
 # Webhook Verification Token
 VERIFY_TOKEN="12345"
 
 #PLAYGROUND CREDENTIALS 
-os.environ['OPENAI_API_KEY'] = "sk-proj--V8l0RH...wA"
-os.environ["OPENAI_ASSISTANT_ID"]="as..."
+os.environ['OPENAI_API_KEY'] = "sk-proj-..-KYggk3wSCoMYa0y6M8SgtknZv-...-...-...-wA"
+os.environ["OPENAI_ASSISTANT_ID"]="..."
 
 rental_sessions = {}
 towing_sessions = {}
@@ -396,21 +397,37 @@ def create_new_thread(from_number, last_message):
     payload = {
         "messages": [
             {
-                "content": f"This is a new user whose contact number is {from_number}. ASK FOR THE USER'S FULL NAME FIRST. Respond with 12 words or less and to the point"
+                "content": f"This is a new user whose contact number is {from_number}. ASK FOR THE USER'S FULL NAME FIRST. After you get users name respond with Nice to meet you, Let me know what you'd like.  Respond with 12 words or less and to the point"
                             "NB whenever a car model or class is mentioned whether from user or from you at any point, ALWAYS SEND THE TRIGGER FOR THE Images of CAR MODEL OR CAR CLASS TO SHOW IMAGES as well"
                             "(Once name is captured, don't ask for it again when getting service requirements) add emojis but sparingly not all messages. Use emojis here and there"
                             "For rental ALWAYS ask for rent out date and return date, for towing ask for pickup separately first and destination location on its own then give user an estimate towing fee"
                             "For towing ALWAYS send the estimate fee and Estimated time of arrival right after getting pickup and destination address before asking for car image to confirm towing"
                             "If you respond and do not get a clear answer, politely acknowledge the user's response and ask your question but in a different way"
-                            "Users are from Zimbabwe, so they speak English, Shona and maybe Ndebele. typically mixed"
+                            "Users are from Zimbabwe, so they speak English, Shona and maybe Ndebele typically mixed. ALWAYS ANSWER IN ENGLISH"
+                            "These are some common Shona phrases" "marii- means how much, if you get that, ask a user to specify what specific amounts they want to know." 
+
+                            "Example:"
+                            "User: imarii? or  marii or mari?"
+                            "Bot: Which prices would you like to know more about?"
+                            "mota means a car so when a user sends that respond with trigger_all_car_images."
+                            "Example:"
+                            "User: Mota imarii? Mune mota dzipi? (or any message with mota in it)"
+                           " Bot: trigger_all_car_images"
+                            "Example:"
+                            "User: Mota"
+                            "Bot:trigger_all_car_images"
                             "If a user has sent you their License or ID before do not ask for it again when they make a request that neeeds those uploads, instead recall their details and proceed to trigger payment button "
                             "For tracking, on the requirements, ask for the Calling number if its different from the whatsapp Number"
+                            "Example Rental:"
+                                "User: I need to rent a Toyota Prado for 10 days."
+                                "Bot: Rental cost $6500, refundable deposit is $200, total mileage 2000km. Pay full amount or deposit to secure your vehicle. Also upload your driver's license"
+                               " (Only ask for license/ID if they are new, else do not mention license/ID upload, proceed to payment directly)"
                             "Do not mention the user's name in every message unless neccesary. After gathering alL details for towing, send the trigger_payment_button function"
                             "If the upload is appropriate to the conversation flow then you can send the payment trigger. e.g. if user sent ID when renting a car then you can then send the payment trigger if not ask them to send the appropriate image first",
                 "role": "assistant"
             },
-            {"content": "All responses must be very short. concise but friendly", "role": "assistant"},  # ✅ Provide context
-            {"content": "Always show me Images If I mention a car model or class", "role": "user"}  # ✅ Include last user message
+            {"content": "All responses must be very short. concise but friendly", "role": "assistant"}, 
+            {"content": "Always show me Images If I mention a car model or class", "role": "user"} 
         ]
     }
 
@@ -503,6 +520,7 @@ def send_whatsapp_interactive_message(to, payload, max_retries=3):
     return False
 
 
+payment_methods = {}
 
 def handle_payment_selection(from_number, selection_id):
     """
@@ -522,6 +540,7 @@ def handle_payment_selection(from_number, selection_id):
             f"📋 *Ref Number:* {ref_number}"
         )
         payment_method = "Online Payment"
+        payment_methods[from_number] = payment_method
 
     elif selection_id == "pay_onsite":
         message = (
@@ -529,12 +548,13 @@ def handle_payment_selection(from_number, selection_id):
             f"📋 *Ref Number:* {ref_number}"
         )
         payment_method = "Onsite Payment"
-
+        payment_methods[from_number] = payment_method
     else:
         message = "❌ Invalid selection. Please try again."
         send_whatsapp_message(from_number, message, is_bot_message=True)
         return False  # ✅ Exit if invalid selection
-
+    
+    
     # ✅ Send Confirmation Message to User
     send_whatsapp_message(from_number, message, is_bot_message=True)
     drive_link = drive_links.get(from_number, "No Drive Link Available")
@@ -545,6 +565,7 @@ def handle_payment_selection(from_number, selection_id):
         f"📞 Contact: {from_number}\n"
         f"📌 Reference Number: {ref_number}\n"
         f"Payment Method: {payment_method}"
+        "If payment method is online, expect an image upload of a proof of payment"
         f"drive link: {drive_link} "
         f"📋 Generate a structured summary including the user's name, Contact, Ref Number,drive link: {drive_link} "
         f"Service Type, and any available uploaded document links.\n"
@@ -696,9 +717,14 @@ def query_openai_model(user_message, from_number):
 
     except Exception as e:
         traceback.print_exc()
-        logging.error(f"❌ OpenAI API Error: {str(e)}")
-        #send_whatsapp_message(bot_reply)
-        return "Hang on..."
+    logging.error(f"❌ OpenAI API Error: {str(e)}")
+    fallback_messages = [
+        "Hang on...", 
+        "Hang in there, I’m just piecing it all together!", 
+    ]
+    # Pick a random message from the list
+    bot_reply = random.choice(fallback_messages)
+    return bot_reply
 
 
 def check_and_resolve_active_run(thread_id, from_number, last_message):
@@ -972,7 +998,7 @@ def save_pending_response(recipient, file_url, file_type="image", caption=None, 
 # Dictionary to store the last sent message per user
 last_sent_messages = {}
 
-processed_triggers = set()  # ✅ Store processed trigger messages to prevent duplication
+processed_payment_trigger = {}  # ✅ Store processed trigger messages to prevent duplication
 
 def send_whatsapp_message(to, message=None, max_retries=3, is_bot_message=False):
     """Sends a WhatsApp message while ensuring triggers are processed only once and avoids repeating recent messages."""
@@ -990,15 +1016,15 @@ def send_whatsapp_message(to, message=None, max_retries=3, is_bot_message=False)
         logging.warning("⚠️ Attempted to send an empty message. Skipping WhatsApp request.")
         return False
 
-    message_clean = message.strip().lower() if isinstance(message, str) else ""
+    message_clean = message.strip() if isinstance(message, str) else ""
 
     logging.info(f"📨 Processing message: '{message_clean}' from {to}")
 
     # ✅ Check if the message is already in user_message_history (to avoid repeating messages)
-    # if to in user_message_history and message_clean in user_message_history[to]:
-    #     logging.info(f"🔄 Message '{message_clean}' was recently sent. Sending fallback response instead.")
-    #     send_text_message(to, "Hang on...")  # ✅ Send fallback response
-    #     return True  # ✅ Stop further processing
+    if to in user_message_history and message_clean in user_message_history[to]:
+        logging.info(f"🔄 Message '{message_clean}' was recently sent. Keeping quiet instead.")
+        #send_text_message(to, "Hang on...")  # ✅ Send fallback response
+        return True  # ✅ Stop further processing
     if message_clean in last_sent_messages:
         return True
 
@@ -1027,7 +1053,7 @@ def send_whatsapp_message(to, message=None, max_retries=3, is_bot_message=False)
     }
 
     # ✅ Detect Trigger Word
-    detected_trigger = next((trigger for trigger in trigger_words if re.search(rf'\b{trigger}\b', message_clean)), None)
+    detected_trigger = next((trigger for trigger in trigger_words if re.search(rf'\b{trigger}\b', message_clean.lower())), None)
 
     if detected_trigger:
         logging.info(f"🛑 Detected trigger word '{detected_trigger}' in message.")
@@ -1389,7 +1415,7 @@ def send_pop_notification_to_admin(from_number):
         logging.warning("⚠️ OpenAI failed to extract POP details.")
         return "Sorry, I couldn't extract the details. Please reupload the POP."
 
-
+    ADMIN_NUMBER = "+...."
     # ✅ Notify User
     #user_reply = f"Got it! Please hold on while I connect you with our freight operator. Your reference number is {ref_number}."
     send_whatsapp_message(ADMIN_NUMBER, pop_details)
@@ -1476,14 +1502,35 @@ def process_uploaded_media(message):
 
     # ✅ Send Final Response to User
     final_response = extracted_text
-    send_whatsapp_message(from_number, final_response, is_bot_message=True)
-    bot_reply = query_openai_model("Reply only with the payment trigger if the uploaded file matches the required context (e.g., ID for car rental).If its a Proof of Payment with transaction ID or ref number send the trigger_send_pop_notification_to_admin function only.  Otherwise, prompt the user to upload the correct file first. (Take Note of user's Name)",from_number)
-    # # # ✅ Send Summary to Admin
+    is_payment_trigger_detected = re.search(rf'\btrigger_payment_button\b', final_response)
+
+    if is_payment_trigger_detected:
+                payment_sent = processed_payment_trigger.get(from_number)
+                if payment_sent is not None:
+                    logging.info(f"Payment button trigger detected, not resending trigger again!")
+                    return True
+        
+    payment_method = payment_methods.get(from_number)
+    
+    bot_reply = None
+
+    if payment_method and payment_method == "Online Payment":
+        #send_whatsapp_message(from_number, final_response, is_bot_message=True)
+        bot_reply = query_openai_model("You are expecting a POP,"
+        "If Correct, trigger send_pop_notification_to_admin. Otherwise,"
+        "prompt the user to upload the correct POP.",from_number)
+
+    else:
+        #send_whatsapp_message(from_number, final_response, is_bot_message=True)
+        bot_reply = query_openai_model("If expecting ID, send the payment button. "
+        "Otherwise, prompt the user to upload the correct expected image.",from_number)
+
     # # admin_summary = f"📢 *New Image Upload Processed!*\n📞 *Contact:* {from_number}\n📸 *Image Link:* {drive_link}\n📝 *AI Analysis:* {extracted_text}"
     send_whatsapp_message(from_number, bot_reply)
     # rental_sessions[from_number] = admin_summary  # ✅ Store admin summary temporarily
     #trigger_payment_button(from_number)
-
+    if is_payment_trigger_detected:
+        processed_payment_trigger[from_number] = datetime.now()
     return jsonify({"message": "Image processed successfully."}), 200
 
 
@@ -1664,8 +1711,8 @@ def process_user_selection(response_data, message):
         "2": [
             {
             "file_url": "https://drive.google.com/uc?export=download&id=1_QN1FAbsJaLISwOsLWMkAwdSISOuImAQ",
-            "caption": "✈️ Travel Services - Let us plan your next trip!\n"
-                        "- If you need a bigger bus, call our Travel Agent\n"
+            "caption": "✈️ Travel Services - \n"
+                        "- Call our Travel Agent\n"
                         "📞 +263712345678 for a quotation."
 
         },
@@ -1963,7 +2010,7 @@ def send_car_model(response_data, message):
                    "- $200 refundable security deposit"},
             {"file_url": "https://drive.google.com/uc?export=download&id=1VLaBUul4oWtWMw-Nr9jJJMLbv7MXK5xO",
              "caption": "Toyota Prado\n"
-                   "- $600/day\n"
+                   "- $650/day\n"
                    "- 200km free mileage per day (cumulative)\n"
                    "- Example: 10 days = 2000km mileage\n"
                    "- $200 refundable security deposit"},
@@ -2049,7 +2096,7 @@ def send_car_model(response_data, message):
             },
             {
                 "file_url": "https://drive.google.com/uc?export=download&id=1IcWv2AqwDZ0_Pq_p4rlN56JUWey3boAx",
-                "caption": "Honda Fit RS (Additional View)"
+                "caption": ""
             }
         ],
 
@@ -2064,7 +2111,7 @@ def send_car_model(response_data, message):
             },
             {
                 "file_url": "https://drive.google.com/uc?export=download&id=1JvXG6FdoVNXFSNw_oCSGgOCw4XqKEds9",
-                "caption": "Honda Fit GK3 (Additional View)"
+                "caption": ""
             }
         ],
 
@@ -2080,7 +2127,7 @@ def send_car_model(response_data, message):
     },
     {
         "file_url": "https://drive.google.com/uc?export=download&id=1JUhBV0rwyll6xhNcyiwNlgn3Ox_-36WP",
-        "caption": "Toyota Aqua (Additional View)"
+        "caption": ""
     }
 ],
 
@@ -2106,7 +2153,7 @@ def send_car_model(response_data, message):
     },
     {
         "file_url": "https://drive.google.com/uc?export=download&id=1_uWVWPmJCne8oooLkJEpF1Jcsx33l7Pp",
-        "caption": "Mazda CX5 (Additional View)"
+        "caption": ""
     }
 ],
 
@@ -2121,7 +2168,7 @@ def send_car_model(response_data, message):
     },
     {
         "file_url": "https://drive.google.com/uc?export=download&id=1vcQMuqgzAxAUYDF3ToI4E15B3RlmAseZ",
-        "caption": "Nissan X-Trail (Additional View)"
+        "caption": ""
     }
 ],
 
@@ -2195,7 +2242,7 @@ def send_car_model(response_data, message):
         },
         {
             "file_url": "https://drive.google.com/uc?export=download&id=1gzwY7WJkgfNHf8D1WIT8e10kEHQzzw0M",
-            "caption": "Nissan Navara (Additional View)"
+            "caption": ""
         }
 ],"toyota_hilux_d4d": [
     {
@@ -2581,7 +2628,7 @@ def whatsapp_webhook():
                         
             # ✅ Proceed to process bot response after handling all user triggers
             # ✅ Get the bot's response
-            # Try to get an FAQ response first
+            #Try to get an FAQ response first
             faq_response = get_faq_response(incoming_message, from_number)
             if faq_response:
                 send_whatsapp_message(from_number, faq_response, is_bot_message=True)
