@@ -204,11 +204,11 @@ def get_db_connection():
     """Creates and returns a PostgreSQL database connection."""
     try:
         conn = psycopg2.connect(
-            dbname="apex",
-            user="apex",
-            password="apex123",
-            host="127.0.0.1",
-            port="5433"
+            dbname="...",
+            user="...",
+            password="...",
+            host="1...1",
+            port="..."
             )
         logging.info("DB Connection Succesful")
         return conn
