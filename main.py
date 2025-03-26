@@ -26,13 +26,13 @@ import random
 # Load environment variables from .env file
 #load_dotenv("C:/Users/user/emelda/GUGU APEX/.env")
 # Meta API Credentials
-os.environ["META_PHONE_NUMBER_ID"]="577823865414380"
+os.environ["META_PHONE_NUMBER_ID"]="5....0"
 os.environ["META_ACCESS_TOKEN"]="..."
-os.environ["WEBHOOK_URL"]="htt...ook"
+os.environ["WEBHOOK_URL"]="h...ook"
 
 # Admin Number
-#ADMIN_NUMBER=+263779557444
-ADMIN_NUMBER="+263773344079"
+#ADMIN_NUMBER=+...
+ADMIN_NUMBER="+..."
 
 # PostgreSQL Database Connection
 # DB_NAME="apex"
@@ -40,16 +40,16 @@ ADMIN_NUMBER="+263773344079"
 # DB_PASSWORD="apex123"
 # DB_HOST="127.0.0.1"
 # DB_PORT="5432"
-os.environ["DB_PORT"]="5432"
-os.environ["DB_USER"]="..."
-os.environ["DB_PASSWORD"]="..."
-os.environ["DB_HOST"]="127.0......1"
-os.environ["DB_NAME"]="..."
+os.environ["DB_PORT"]=".."
+os.environ["DB_USER"]=".."
+os.environ["DB_PASSWORD"]=".."
+os.environ["DB_HOST"]="..0....1"
+os.environ["DB_NAME"]=".."
 # Webhook Verification Token
-VERIFY_TOKEN="12345"
+VERIFY_TOKEN=".."
 
 #PLAYGROUND CREDENTIALS 
-os.environ['OPENAI_API_KEY'] = "sk-proj-..-KYggk3wSCoMYa0y6M8SgtknZv-...-...-...-wA"
+os.environ['OPENAI_API_KEY'] = "sk-..-..-.-..-...-...-A"
 os.environ["OPENAI_ASSISTANT_ID"]="..."
 
 rental_sessions = {}
@@ -204,11 +204,11 @@ def get_db_connection():
     """Creates and returns a PostgreSQL database connection."""
     try:
         conn = psycopg2.connect(
-            dbname="...",
-            user="...",
-            password="...",
-            host="1...1",
-            port="..."
+            dbname="apex",
+            user="apex",
+            password="apex123",
+            host="127.0.0.1",
+            port="5433"
             )
         logging.info("DB Connection Succesful")
         return conn
@@ -404,14 +404,14 @@ def create_new_thread(from_number, last_message):
                             "For towing ALWAYS send the estimate fee and Estimated time of arrival right after getting pickup and destination address before asking for car image to confirm towing"
                             "If you respond and do not get a clear answer, politely acknowledge the user's response and ask your question but in a different way"
                             "Users are from Zimbabwe, so they speak English, Shona and maybe Ndebele typically mixed. ALWAYS ANSWER IN ENGLISH"
-                            "These are some common Shona phrases" "marii- means how much, if you get that, ask a user to specify what specific amounts they want to know." 
+                            "These are some common Shona phrases" "marii- means how much, if you get that, Tell the user: Let me share the prices with you." 
 
                             "Example:"
                             "User: imarii? or  marii or mari?"
-                            "Bot: Which prices would you like to know more about?"
+                            "Bot: Let me share the prices with you"
                             "mota means a car so when a user sends that respond with trigger_all_car_images."
                             "Example:"
-                            "User: Mota imarii? Mune mota dzipi? (or any message with mota in it)"
+                            "User: Mota imarii? Mune mota dzipi? Mota marii (or any message with mota in it)"
                            " Bot: trigger_all_car_images"
                             "Example:"
                             "User: Mota"
@@ -421,7 +421,7 @@ def create_new_thread(from_number, last_message):
                             "Example Rental:"
                                 "User: I need to rent a Toyota Prado for 10 days."
                                 "Bot: Rental cost $6500, refundable deposit is $200, total mileage 2000km. Pay full amount or deposit to secure your vehicle. Also upload your driver's license"
-                               " (Only ask for license/ID if they are new, else do not mention license/ID upload, proceed to payment directly)"
+                               " (Only ask for license/ID if they are new, else do not mention license/ID upload, proceed to send trigger_payment_button)"
                             "Do not mention the user's name in every message unless neccesary. After gathering alL details for towing, send the trigger_payment_button function"
                             "If the upload is appropriate to the conversation flow then you can send the payment trigger. e.g. if user sent ID when renting a car then you can then send the payment trigger if not ask them to send the appropriate image first",
                 "role": "assistant"
@@ -1414,11 +1414,14 @@ def send_pop_notification_to_admin(from_number):
     if not pop_details:
         logging.warning("⚠️ OpenAI failed to extract POP details.")
         return "Sorry, I couldn't extract the details. Please reupload the POP."
+    
 
-    ADMIN_NUMBER = "+...."
+    ADMIN_NUMBER = "+..."
     # ✅ Notify User
     #user_reply = f"Got it! Please hold on while I connect you with our freight operator. Your reference number is {ref_number}."
+    send_whatsapp_message (from_number, "Thank you! POP received. Admin will validate and get back to you shortly")
     send_whatsapp_message(ADMIN_NUMBER, pop_details)
+    del payment_methods[from_number]
     
     return "POP notification sent successfully."
 
@@ -1522,8 +1525,10 @@ def process_uploaded_media(message):
 
     else:
         #send_whatsapp_message(from_number, final_response, is_bot_message=True)
-        bot_reply = query_openai_model("If expecting ID, send the payment button. "
+        bot_reply = query_openai_model("If expecting ID, send the payment button."
+        "If expecting a vehicle image for towing send the payment button."
         "Otherwise, prompt the user to upload the correct expected image.",from_number)
+    
 
     # # admin_summary = f"📢 *New Image Upload Processed!*\n📞 *Contact:* {from_number}\n📸 *Image Link:* {drive_link}\n📝 *AI Analysis:* {extracted_text}"
     send_whatsapp_message(from_number, bot_reply)
@@ -2248,7 +2253,7 @@ def send_car_model(response_data, message):
     {
         "file_url": "https://drive.google.com/uc?export=download&id=1y3zekPU7EncfRcp81Iq6nv46PRFQwM5M",
         "caption": "Toyota Hilux D4D\n"
-                   "- $200/day\n"
+                   "- $150/day\n"
                    "- 200km free mileage per day (cumulative)\n"
                    "- Example: 10 days = 2000km mileage\n"
                    "- $200 refundable security deposit"
