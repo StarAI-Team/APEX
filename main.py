@@ -206,6 +206,8 @@ def get_faq_response(query, from_number):
     
 
 
+
+
 def get_db_connection():
     """Creates and returns a PostgreSQL database connection."""
     try:
@@ -1277,7 +1279,7 @@ def send_whatsapp_message(to, message=None, max_retries=3, is_bot_message=False)
         "trigger_suv", "trigger_fuel_saver", "trigger_double_cab", "trigger_mid_suv", "trigger_send_pop_notification_to_admin",
         "trigger_mini_buses", "trigger_luxury", "trigger_axio", "trigger_mercedes_benz_e_class",
         "trigger_mercedes_benz_c_class", "trigger_all_car_images", "trigger_toyota_gd6_hilux",
-        "trigger_send_freight_notification_to_admin", "trigger_check_car_availability"
+        "trigger_send_freight_notification_to_admin", "trigger_check_car_availability", "trigger_suspicious"
     }
 
     # ✅ Detect Trigger Word
@@ -1523,6 +1525,7 @@ def set_user_thread(from_number, thread_id):
     user_threads[from_number] = thread_id
     #print(f"✅ Thread ID {thread_id} set for user {from_number}")
 
+
 def send_freight_notification_to_admin(from_number, message):
     """
     Extracts freight details from an OpenAI conversation and sends a structured notification to the admin.
@@ -1537,26 +1540,52 @@ def send_freight_notification_to_admin(from_number, message):
         f"📌 Identify:\n"
         f"- Freight type\n"
         f"- Quantity (e.g., 10 tonnes)\n"
-        f"- Destination\n\n"
+        f"- Destination\n"
+        f"- Truck type (e.g., 30-tonne flatbed)\n\n"
         f"Example:\n"
-        f"User: I need to transport 10 tonnes of maize to Kadoma.\n"
+        f"User: I need to transport 10 tonnes of maize to Kadoma with a 30-tonne flatbed.\n"
         f"AI Response:\n"
         f"✅ Freight: Maize\n"
         f"📦 Quantity: 10 tonnes\n"
-        f"📍 Destination: Kadoma"
+        f"📍 Destination: Kadoma\n"
+        f"🚛 Truck Type: 30-tonne flatbed"
     )
 
+    # Query OpenAI for freight details
     freight_details = query_openai_model(openai_prompt, from_number)
+
+    # Log the raw response to debug
+    logging.info(f"Raw OpenAI response: {freight_details}")
 
     if not freight_details:
         logging.warning("⚠ OpenAI failed to extract freight details.")
-        return "Sorry, I couldn't extract the details. Please provide the freight type, quantity, and destination."
+        return "Sorry, I couldn't extract the details. Please provide the freight type, quantity, destination, and truck type."
 
     # ✅ Parse freight details
     try:
-        freight_type = freight_details.get("freight_type", "Unknown")
-        quantity = freight_details.get("quantity", "Unknown")
-        destination = freight_details.get("destination", "Unknown")
+        # Attempt to parse the response if it appears to be JSON
+        if isinstance(freight_details, str):
+            try:
+                freight_details = json.loads(freight_details)
+            except Exception:
+                # Attempt to manually parse a structured response if JSON decoding fails
+                lines = freight_details.split("\n")
+                freight_type = quantity = destination = truck_type = "Unknown"
+                for line in lines:
+                    if line.startswith("✅ Freight:"):
+                        freight_type = line.replace("✅ Freight:", "").strip()
+                    elif line.startswith("📦 Quantity:"):
+                        quantity = line.replace("📦 Quantity:", "").strip()
+                    elif line.startswith("📍 Destination:"):
+                        destination = line.replace("📍 Destination:", "").strip()
+                    elif line.startswith("🚛 Truck Type:"):
+                        truck_type = line.replace("🚛 Truck Type:", "").strip()
+            else:
+                # Extract values from the parsed JSON
+                freight_type = freight_details.get("freight_type", "Unknown")
+                quantity = freight_details.get("quantity", "Unknown")
+                destination = freight_details.get("destination", "Unknown")
+                truck_type = freight_details.get("truck_type", "Unknown")
     except Exception as e:
         traceback.print_exc()
         logging.error(f"Error parsing freight details: {str(e)}")
@@ -1569,6 +1598,7 @@ def send_freight_notification_to_admin(from_number, message):
         f"📦 *Freight:* {freight_type}\n"
         f"🔢 *Quantity:* {quantity}\n"
         f"📍 *Destination:* {destination}\n"
+        f"🚛 *Truck Type:* {truck_type}\n"
         f"📌 *Reference Number:* {ref_number}\n"
         f"🚛 *Next Steps:* Connect with the freight operator."
     )
@@ -1583,19 +1613,17 @@ def send_freight_notification_to_admin(from_number, message):
         return "Failed to send freight notification to admin."
 
     # ✅ Notify User
-    user_reply = f" Your reference number is {ref_number}. Our Freight Operator will contact you from this number +123456"
+    user_reply = f"Your reference number is {ref_number}. Our Freight Operator will contact you from this number +123456"
     try:
-        send_whatsapp_message(ADMIN_NUMBER, admin_message)
         send_whatsapp_message(from_number, user_reply)
-
-
-        logging.info(f"Admin notified: {admin_message}")
+        logging.info(f"User notified: {user_reply}")
     except Exception as e:
         traceback.print_exc()
         logging.error(f"Failed to notify user: {str(e)}")
         return "Failed to send notification to the user."
 
     return "Freight notification sent successfully."
+
 
 def send_pop_notification_to_admin(from_number):
     """
@@ -2680,6 +2708,228 @@ def save_location(from_number, lat, lon):
         conn.close()
 
 
+def handle_suspicious_inquiry(from_number, message):
+    """
+    Detects flagged suspicious behavior in rental inquiries and notifies the admin.
+    """
+
+    # ✅ Generate Unique Reference Number
+    ref_number = generate_ref_number()
+
+    # ✅ Query OpenAI for Suspicious Details
+    openai_prompt = (
+        f"A user with phone number {from_number} made a suspicious rental inquiry. Extract the details and format them.\n"
+        f"📌 Identify:\n"
+        f"- Client's message\n"
+        f"- Reason for suspicion (e.g., requesting chassis number, specific car year, or other unusual details)\n\n"
+        f"Example:\n"
+        f"User: I need a white 2018 Toyota Hilux with chassis number visible.\n"
+        f"AI Response:\n"
+        f"🚨 Suspicious Rental Inquiry Detected!\n"
+        f"👤 Client: {from_number}\n"
+        f"🚗 Request: White 2018 Toyota Hilux with chassis number visible\n"
+        f"⚠️ Reason: Requesting chassis number\n"
+        f"📌 Reference Number: {ref_number}\n"
+        f"🚛 Action: Review this request before proceeding."
+    )
+
+    # ✅ Query OpenAI for suspicious details
+    suspicious_details = query_openai_model(openai_prompt, from_number)
+
+    # ✅ Log the raw response to debug
+    logging.info(f"Raw OpenAI response for suspicious inquiry: {suspicious_details}")
+
+    if not suspicious_details:
+        logging.warning("⚠ OpenAI failed to extract suspicious details.")
+        return "Sorry, I couldn't extract the details. Please review the suspicious inquiry manually."
+
+    # ✅ Parse suspicious details
+    try:
+        # Attempt to parse the response if it appears to be JSON
+        if isinstance(suspicious_details, str):
+            try:
+                suspicious_details = json.loads(suspicious_details)
+            except Exception:
+                # Attempt to manually parse a structured response if JSON decoding fails
+                lines = suspicious_details.split("\n")
+                client_message = reason = "Unknown"
+                for line in lines:
+                    if line.startswith("🚗 Request:"):
+                        client_message = line.replace("🚗 Request:", "").strip()
+                    elif line.startswith("⚠️ Reason:"):
+                        reason = line.replace("⚠️ Reason:", "").strip()
+            else:
+                # Extract values from the parsed JSON
+                client_message = suspicious_details.get("client_message", "Unknown")
+                reason = suspicious_details.get("reason", "Unknown")
+    except Exception as e:
+        traceback.print_exc()
+        logging.error(f"Error parsing suspicious details: {str(e)}")
+        return "An error occurred while processing the suspicious inquiry details."
+
+    # ✅ Format Admin Message
+    admin_message = (
+        f"🚨 *Suspicious Rental Inquiry Detected!*\n"
+        f"👤 *Client:* {from_number}\n"
+        f"🚗 *Request:* {client_message}\n"
+        f"⚠️ *Reason:* {reason}\n"
+        f"📌 *Reference Number:* {ref_number}\n"
+        f"🚛 *Action:* Review this request before proceeding."
+    )
+
+    # ✅ Send Notification to Admin
+    try:
+        send_whatsapp_message(ADMIN_NUMBER, admin_message)
+        logging.info(f"🚨 Suspicious inquiry notification sent to admin: {admin_message}")
+    except Exception as e:
+        traceback.print_exc()
+        logging.error(f"❌ Failed to send suspicious inquiry notification to admin: {str(e)}")
+        return "Failed to send suspicious inquiry notification to admin."
+    return "Suspicious behavior detected and reported to admin."
+
+
+
+
+def trigger_whatsapp_flow(to_number, message, flow_cta, flow_id):
+    """
+    Sends a request to trigger a WhatsApp Flow with the correct structure.
+    Uses logging for debugging.
+    """
+    PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID")  # WhatsApp Business API Phone Number ID
+    ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")  # Your API Access Token
+
+    # ✅ Log environment variables
+    logging.debug(f"📢 Triggering WhatsApp Flow for {to_number}")
+    logging.debug(f"🔍 PHONE_NUMBER_ID: {PHONE_NUMBER_ID}")
+    logging.debug(f"🔍 FLOW_ID: {flow_id}")  # Use the passed parameter
+
+    if not PHONE_NUMBER_ID or not ACCESS_TOKEN or not flow_id:
+        logging.error("❌ Missing required environment variables!")
+        return "Error: Missing environment variables."
+
+    url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
+
+    headers = {
+        "Authorization": f"Bearer {ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to_number,
+        "type": "interactive",
+        "interactive": {
+            "type": "flow",
+            "body": {
+                "text": message
+            },
+            "action": {
+                "name": "flow",
+                "parameters": {
+                    "flow_id": flow_id,  
+                    "flow_cta": flow_cta,
+                    "flow_token": 'rufaro_is_a_genius',
+                    "flow_message_version": 3,
+                    "mode": 'published',
+                }
+            }
+        }
+    }
+
+    response = requests.post(url, headers=headers, json=payload)
+
+    # ✅ Log API response
+    logging.debug(f"🔍 WhatsApp API Response ({response.status_code}): {response.text}")
+
+    if response.status_code == 200:
+        logging.info(f"✅ Flow triggered successfully for {to_number}")
+        return "Flow triggered successfully."
+    else:
+        logging.error(f"❌ Error triggering flow for {to_number}: {response.text}")
+        return f"Error triggering flow: {response.text}"
+
+
+def save_rating_to_db(flow_response):
+    """
+    Extracts flow data from the response and saves it to the ratings table.
+    """
+    try:
+        # Establish a database connection
+        conn = get_db_connection()
+        if not conn:
+            logging.error("Unable to establish a database connection.")
+            return False
+
+        # Parse the flow response
+        try:
+            # If the response_json itself is a JSON string, parse it again
+            if isinstance(flow_response, str):
+                flow_response = json.loads(flow_response)
+        except json.JSONDecodeError as e:
+            logging.error(f"❌ Error decoding flow response JSON: {str(e)}")
+            return False
+
+        rating = None
+        comment = None
+
+        # Extract the rating from the specific key prefix
+        for key, value in flow_response.items():
+            if "screen_0_Rental_Experience_0" in key:
+                rating_match = re.search(r"\((\d+)/\d+\)", value)  # Find pattern like (4/5)
+                if rating_match:
+                    try:
+                        rating = int(rating_match.group(1))  # Extract the number before the slash
+                        logging.info(f"✅ Extracted rating: {rating}")
+                    except ValueError:
+                        logging.error(f"❌ Invalid rating value: {rating_match.group(1)}")
+                        continue
+
+        # Extract the comment from the specific key prefix
+        for key, value in flow_response.items():
+            if "screen_0_Rental_Experience_1" in key:
+                comment = value.strip()
+                logging.info(f"✅ Extracted comment: {comment}")
+
+        # Fallback if rating or comment is still None
+        if rating is None:
+            logging.warning("⚠️ Rating not found, defaulting to 0.")
+            rating = 0
+        
+        if not comment:
+            logging.info("⚠️ Comment not found, defaulting to 'No comment provided'.")
+            comment = "No comment provided"
+
+        # Assuming service type and ref number are passed separately or hardcoded
+        service_type = "rental"  # You can modify this as needed
+        ref_number = "Unknown"  # Placeholder for the reference number
+
+        # Get the current timestamp
+        timestamp = datetime.utcnow()
+
+        # Insert data into the database
+        insert_query = """
+            INSERT INTO ratings (timestamp, rating, comment, service_type, ref_number)
+            VALUES (%s, %s, %s, %s, %s)
+        """
+        with conn.cursor() as cursor:
+            cursor.execute(insert_query, (timestamp, rating, comment, service_type, ref_number))
+            conn.commit()
+
+        logging.info(f"✅ Successfully saved rating to the database: {rating}, {comment}, {service_type}, {ref_number}")
+        return True
+
+    except Exception as e:
+        logging.error(f"❌ Error saving rating to the database: {str(e)}")
+        traceback.print_exc()
+        return False
+
+    finally:
+        if conn:
+            conn.close()
+            logging.info("Database connection closed.")
+
+
 
 
 # Dictionary to store the last 4 received messages per user
@@ -2811,6 +3061,8 @@ def whatsapp_webhook():
                     response_message = "Sorry, Could you please type your message instead?😊"
                     send_whatsapp_message(from_number, response_message)
                     return jsonify({"message": "Voice note response sent"}), 200
+                
+            
             
             # ✅ Prevent bot from looping on its own messages
             if message.get("from") == os.environ["META_PHONE_NUMBER_ID"]:
@@ -2818,9 +3070,25 @@ def whatsapp_webhook():
                 return jsonify({"message": "Bot message ignored"}), 200
 
 
-               
+            
+            
             incoming_message = message.get('text', {}).get('body', '').strip().lower()
-         
+
+            # Check for Interactive Flow Response
+            if message.get('type') == "interactive":
+                interactive_data = message.get('interactive', {})
+
+                # Handle Flow Submission (nfm_reply)
+                if interactive_data.get('type') == "nfm_reply":
+                    flow_response = interactive_data.get('nfm_reply', {}).get('response_json')
+
+                    if flow_response:
+                        response_data = json.loads(flow_response)  # Convert string to dictionary
+                        success = save_rating_to_db(response_data)
+                        if success:
+                            return jsonify({"message": "Flow data saved successfully"}), 200
+                        else:
+                            return jsonify({"error": "Failed to save flow data"}), 500
 
 
             logging.info(f"📥 Message from {from_number}: {incoming_message}")
@@ -2848,7 +3116,8 @@ def whatsapp_webhook():
                 "trigger_suv", "trigger_fuel_saver", "trigger_double_cab", "trigger_mid_suv",
                 "trigger_mini_buses", "trigger_luxury", "trigger_axio", "trigger_mercedes_benz_e_class",
                 "trigger_mercedes_benz_c_class", "trigger_all_car_images", "trigger_toyota_gd6_hilux",
-                "trigger_send_pop_notification_to_admin", "trigger_send_freight_notification_to_admin", "trigger_check_car_availability"
+                "trigger_send_pop_notification_to_admin", "trigger_send_freight_notification_to_admin", 
+                "trigger_check_car_availability", "trigger_suspicious"
             }
 
            # ✅ Find All Matching Trigger Words Inside the Message
@@ -2895,10 +3164,13 @@ def whatsapp_webhook():
                         send_pop_notification_to_admin(from_number)
                     
                     elif primary_trigger in ["trigger_send_freight_notification_to_admin"]:
-                        send_freight_notification_to_admin(from_number)
+                        send_freight_notification_to_admin(from_number, message)
 
                     elif primary_trigger in ["trigger_check_car_availability"]:
                         check_and_notify_availability(from_number)
+
+                    elif primary_trigger in ["trigger_suspicious"]:
+                        handle_suspicious_inquiry(from_number, message)
 
                 return jsonify({"message": "Trigger processed"}), 200  # ✅ Stop further processing after triggers
 
