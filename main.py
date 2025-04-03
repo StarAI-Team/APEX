@@ -1,5 +1,5 @@
-
 import os
+import sys
 import re
 import schedule
 import time
@@ -19,39 +19,41 @@ from drive_upload import upload_to_google_drive
 import uuid
 import time  # For timestamps
 from logging.handlers import RotatingFileHandler
-import openai
-import random
+import json  
+import logging
+from logging.handlers import RotatingFileHandler
+from bp import admin_bp, bcrypt
+from utils import send_whatsapp_file, get_db_connection
+
+
+
+
 
 
 
 # Load environment variables from .env file
-#load_dotenv("C:/Users/user/emelda/GUGU APEX/.env")
+load_dotenv()
 # Meta API Credentials
-os.environ["META_PHONE_NUMBER_ID"]="5....0"
-os.environ["META_ACCESS_TOKEN"]="..."
-os.environ["WEBHOOK_URL"]="h...ook"
+os.environ['META_PHONE_NUMBER_ID'] 
+os.environ['META_ACCESS_TOKEN']
+os.environ["VERIFY_TOKEN"]
+os.environ["ADMIN_NUMBER"]
 
-# Admin Number
-#ADMIN_NUMBER=+...
-ADMIN_NUMBER="+..."
 
-# PostgreSQL Database Connection
-# DB_NAME="apex"
-# DB_USER="apex"
-# DB_PASSWORD="apex123"
-# DB_HOST="127.0.0.1"
-# DB_PORT="5432"
-os.environ["DB_PORT"]=".."
-os.environ["DB_USER"]=".."
-os.environ["DB_PASSWORD"]=".."
-os.environ["DB_HOST"]="..0....1"
-os.environ["DB_NAME"]=".."
-# Webhook Verification Token
-VERIFY_TOKEN=".."
+
+
+
+os.environ["DB_PORT"]
+os.environ["DB_USER"]
+os.environ["DB_PASSWORD"]
+os.environ["DB_HOST"]
+os.environ["DB_NAME"]
+
+
 
 #PLAYGROUND CREDENTIALS 
-os.environ['OPENAI_API_KEY'] = "sk-..-..-.-..-...-...-A"
-os.environ["OPENAI_ASSISTANT_ID"]="..."
+os.environ['OPENAI_API_KEY']
+os.environ["OPENAI_ASSISTANT_ID"]
 
 rental_sessions = {}
 towing_sessions = {}
@@ -61,12 +63,6 @@ processed_messages = set()  # ✅ Stores processed message IDs to prevent duplic
 
 
 
-# Set up environment variables for Meta API
-# os.environ['META_PHONE_NUMBER_ID'] 
-# os.environ['META_ACCESS_TOKEN']
-# os.environ['OPENAI_API_KEY'] 
-
-
 
  #Initialize OpenAI client
 client = OpenAI(
@@ -74,10 +70,10 @@ client = OpenAI(
 )
 
 OPENAI_ASSISTANT_ID = os.environ["OPENAI_ASSISTANT_ID"]
+ADMIN_NUMBER = os.getenv('ADMIN_NUMBER')
 
-import logging
-from logging.handlers import RotatingFileHandler
-import sys
+
+
 
 # Configure RotatingFileHandler for file logging (5MB per file, 2 backups)
 file_handler = RotatingFileHandler("agent.log", maxBytes=5 * 1024 * 1024, backupCount=2, encoding='utf-8')
@@ -109,6 +105,10 @@ logging.getLogger('urllib3').setLevel(logging.WARNING)  # Suppresses API request
 
 # Flask application
 app = Flask(__name__)
+app.register_blueprint(admin_bp)
+bcrypt.init_app(app)
+
+
 
 # Configure Flask-Session
 app.config['SESSION_TYPE'] = 'filesystem'  # Use filesystem for development
@@ -118,112 +118,105 @@ app.secret_key = 'ghnvdre5h4562'
 Session(app)
 
 
+FLOW_IDS = {
+    "rental_flow": os.getenv("WHATSAPP_FLOW_RENTAL"),
+    "Tracking": os.getenv("WHATSAPP_FLOW_TRACKING"),
+    "Towing": os.getenv("WHATSAPP_FLOW_ORDER_TOWING"),
+    "Travel": os.getenv("WHATSAPP_FLOW_TRAVEL"),
+    "Payment":os.getenv("WHATSAPP_FLOW_PAYMENT"),
+    "Rating":os.getenv("WHATSAPP_FLOW_RATING"),
+}
+
 logging.info("TEST")
+access_token = os.environ.get('META_ACCESS_TOKEN')
+logging.info(f"Access Token: {access_token}")
 # Admin number to send periodic updates
 ADMIN_NUMBER = ADMIN_NUMBER
 
 
-def get_faq_response(query, from_number):
-    query = query.lower()
+# def get_faq_response(query, from_number):
+#     query = query.lower()
 
-    # Comprehensive FAQ responses
-    faq_responses = {
-        # General Information
-        "what are your business hours": "Monday - Sunday: 08:00 - 17:30",
-        "contact information": "Phone: +263773022984 / +263 7 77230797 | Email: sales@apextravel.co.zw",
-        "location": "12th Floor, Causeway Building, Harare",
-        "payment options": "Payment methods include DPO link, EcoCash, Omari, Innbucks, Paynow, and cash pick-up at Quest Financial Services.",
-        "online payments": "Full Name, Email, and Phone Number are required. A payment link will be sent via email.",
-        "world remit payments": "Name: Tanaka Mupfurutsa, Phone: +263773022984",
-        "cash pick-up": "Cash pick-up available at Quest Financial Services.",
-        "google review discount": "Enjoy 10% OFF your next booking! Just leave a Google Review.",
-        "mari means money in shona, so marii, imarii, mari? means how much, so if a message is marii mota, its how much for the car, if its imarii tracking, its how much is tracking etc."
-        "marii tracking-:Installation: $50, Monthly: $13 (first 3 months upfront). "
-        "promotions and discounts": "Get 10% off your next booking by leaving a Google Review!",
-        #"marii": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
-        "marii mota": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
-        "mari mota": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
-        #"mari": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
+#     # Comprehensive FAQ responses
+#     faq_responses = {
+#         # General Information
+#         "what are your business hours": "Monday - Sunday: 08:00 - 17:30",
+#         "contact information": "Phone: +263773022984 / +263 7 77230797 | Email: sales@apextravel.co.zw",
+#         "location": "12th Floor, Causeway Building, Harare",
+#         "payment options": "Payment methods include DPO link, EcoCash, Omari, Innbucks, Paynow, and cash pick-up at Quest Financial Services.",
+#         "online payments": "Full Name, Email, and Phone Number are required. A payment link will be sent via email.",
+#         "world remit payments": "Name: Tanaka Mupfurutsa, Phone: +263773022984",
+#         "cash pick-up": "Cash pick-up available at Quest Financial Services.",
+#         "google review discount": "Enjoy 10% OFF your next booking! Just leave a Google Review.",
+#         "mari means money in shona, so marii, imarii, mari? means how much, so if a message is marii mota, its how much for the car, if its imarii tracking, its how much is tracking etc."
+#         "marii tracking-:Installation: $50, Monthly: $13 (first 3 months upfront). "
+#         "promotions and discounts": "Get 10% off your next booking by leaving a Google Review!",
+#         #"marii": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
+#         "marii mota": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
+#         "mari mota": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
+#         #"mari": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
 
-        # Car Rental Service
-        "rental prices": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
-        "fuel saver rental": "Honda Fit RS - $40/day, Toyota Aqua - $45/day. 150km free mileage per day.",
-        "luxury car rental": "Mercedes Benz E-Class 212 - $200/day, Mercedes Benz C-Class 204 - $150/day.",
-        "suv rental": "Toyota Fortuner GD6 - $200/day, Nissan X-Trail - $80/day, Chevrolet Trailblazer - $150/day.",
-        "double cab rental": "Toyota Hilux D4D - $150/day, Ford Ranger - $150/day, Nissan Navara - $250/day.",
-        "mini bus rental": "NV350 9 Seater - $150/day, NV350 13 Seater - $180/day.",
-        "mileage policy": "All rentals include daily free mileage that accumulates over rental days.",
-        "car rental requirements": "$200 refundable deposit, license or national ID required.",
+#         # Car Rental Service
+#         "rental prices": "Fuel savers from $40 (GE6 Honda Fit), SUVs from $150 (D4D Fortuner, Hilux), and mini buses from $150.",
+#         "fuel saver rental": "Honda Fit RS - $40/day, Toyota Aqua - $45/day. 150km free mileage per day.",
+#         "luxury car rental": "Mercedes Benz E-Class 212 - $200/day, Mercedes Benz C-Class 204 - $150/day.",
+#         "suv rental": "Toyota Fortuner GD6 - $200/day, Nissan X-Trail - $80/day, Chevrolet Trailblazer - $150/day.",
+#         "double cab rental": "Toyota Hilux D4D - $150/day, Ford Ranger - $150/day, Nissan Navara - $250/day.",
+#         "mini bus rental": "NV350 9 Seater - $150/day, NV350 13 Seater - $180/day.",
+#         "mileage policy": "All rentals include daily free mileage that accumulates over rental days.",
+#         "car rental requirements": "$200 refundable deposit, license or national ID required.",
         
-        # Towing Service
-        "towing service": "We offer towing and roadside assistance 24/7. Would you like your vehicle towed?",
-        "towing cost": "Within Harare: $70. Outside Harare: $1.50 per km (round trip) for basic assist, extraction etc come at an extra cost",
-        "towing fee": "Base fee: $70 for up to 25km radius within Harare and $1 per km beyond 25km for basic assist, extraction etc come at an extra cost",
-        "roadside assistance": "Available for breakdowns and emergencies.",
-        "towing cost after 10pm": "Base fee: $100 for up to 25km radius within Harare and $1 per km beyond 25km for basic assist, extraction etc come at an extra cost",
+#         # Towing Service
+#         "towing service": "We offer towing and roadside assistance 24/7. Would you like your vehicle towed?",
+#         "towing cost": "Within Harare: $70. Outside Harare: $1.50 per km (round trip) for basic assist, extraction etc come at an extra cost",
+#         "towing fee": "Base fee: $70 for up to 25km radius within Harare and $1 per km beyond 25km for basic assist, extraction etc come at an extra cost",
+#         "roadside assistance": "Available for breakdowns and emergencies.",
+#         "towing cost after 10pm": "Base fee: $100 for up to 25km radius within Harare and $1 per km beyond 25km for basic assist, extraction etc come at an extra cost",
         
-        # Tracking Service
-        "tracking service cost": "Light Vehicles:Installation: $50, Monthly: $13 (first 3 months upfront). Heavy Vehicles:Installation: $100, Monthly: $26 (first 3 months upfront).",
-        "how to set up tracking": "Provide name, address, phone number, vehicle make, model, color, and registration number.",
-        "tracking installation cost": "$50 one-time installation fee.",
-        "monthly tracking fee": "$13 per month (first 3 months upfront).",
-        "tracking service features": "Our exceptional tracking services come with added features on vehicle tracking such as : Driver behavior, remote cutoff, 24hr monitoring, route playback, customized reports, voice monitoring to say the least",
-        "installation time":"installation typically takes 20 minutes and we can install at your preferred location",
+#         # Tracking Service
+#         "tracking service cost": "Light Vehicles:Installation: $50, Monthly: $13 (first 3 months upfront). Heavy Vehicles:Installation: $100, Monthly: $26 (first 3 months upfront).",
+#         "how to set up tracking": "Provide name, address, phone number, vehicle make, model, color, and registration number.",
+#         "tracking installation cost": "$50 one-time installation fee for small vehicle and $100 for Heavy vehicle.",
+#         "monthly tracking fee": "$13 per month (first 3 months upfront).",
+#         "tracking service features": "Our exceptional tracking services come with added features on vehicle tracking such as : Driver behavior, remote cutoff, 24hr monitoring, route playback, customized reports, voice monitoring to say the least",
+#         "installation time":"installation typically takes 20 minutes and we can install at your preferred location",
 
-        # Freight & Trucking Service
-        "freight service": "We offer cargo transport for various loads. Please provide your cargo and destination",
-        "how to book freight": "Provide cargo type, pick-up point, and destination.",
-        "freight charges": "Charges vary based on cargo weight and distance.",
+#         # Freight & Trucking Service
+#         "freight service": "We offer cargo transport for various loads. Please provide your cargo and destination",
+#         "how to book freight": "Provide cargo type, pick-up point, and destination.",
+#         "freight charges": "Charges vary based on cargo weight and distance.",
 
-        # Travel & Tourism Services
-        "group travel booking": "We arrange group travel and school trips with driver and guide options.",
-        "tourism packages": "We offer curated tourism packages including driver and guide services.",
-        "school trip booking": "Includes bus and designated driver. Ask for the number of passengers.",
-        "plane tickets": "We do offer ticketing for regional, local and international flights. Just give us your destination and travel time and we will sort that out for you",
-        "accommodation booking": "We offer accommodation booking to hotels, BnBs, resorts etc... just give me your destination and dates",
+#         # Travel & Tourism Services
+#         "group travel booking": "We arrange group travel and school trips with driver and guide options.",
+#         "tourism packages": "We offer curated tourism packages including driver and guide services.",
+#         "school trip booking": " Our package includes a bus and a designated driver. How many passengers will be travelling.",
+#         "plane tickets": "We do offer ticketing for regional, local and international flights. Just give us your destination and travel time and we will sort that out for you",
+#         "accommodation booking": "We offer accommodation booking to hotels, BnBs, resorts etc... just give me your destination and dates",
         
-        # Promotions & Discounts
-        "discount for reviews": "Get 10% off your next booking by leaving a review on Google.",
-        "ongoing promotions": "Currently, get 10% off your next booking when you leave a review.",
+#         # Promotions & Discounts
+#         "discount for reviews": "Get 10% off your next booking by leaving a review on Google.",
+#         "ongoing promotions": "Currently, get 10% off your next booking when you leave a review.",
         
-        # Social Media Links
-        "facebook link": "https://www.facebook.com/share/19uytwkFis/",
-        "instagram link": "https://www.instagram.com/apextravelzimbabwe",
-        "twitter link": "https://x.com/apextravel263",
-        "tiktok link": "https://www.tiktok.com/@apextravel263",
-        "google review link": "https://www.google.com/gasearch?q=apex%20travel%20zimbabwe%20reviews",
-    }
+#         # Social Media Links
+#         "facebook link": "https://www.facebook.com/share/19uytwkFis/",
+#         "instagram link": "https://www.instagram.com/apextravelzimbabwe",
+#         "twitter link": "https://x.com/apextravel263",
+#         "tiktok link": "https://www.tiktok.com/@apextravel263",
+#         "google review link": "https://www.google.com/gasearch?q=apex%20travel%20zimbabwe%20reviews",
+#     }
 
-    # Check if the query matches any FAQ
-    for keyword, response in faq_responses.items():
-        if keyword in query:
-            return response
+#     # Check if the query matches any FAQ
+#     for keyword, response in faq_responses.items():
+#         if keyword in query:
+#             return response
 
-    # Fallback to OpenAI if no direct match
-    bot_reply = query_openai_model(query, from_number)
-    return send_whatsapp_message(from_number, bot_reply, is_bot_message=True)
-    #return response['choices'][0]['message']['content'].strip()
+#     # Fallback to OpenAI if no direct match
+#     bot_reply = query_openai_model(query, from_number)
+#     return send_whatsapp_message(from_number, bot_reply, is_bot_message=True)
+#     #return response['choices'][0]['message']['content'].strip()
     
 
 
-
-
-def get_db_connection():
-    """Creates and returns a PostgreSQL database connection."""
-    try:
-        conn = psycopg2.connect(
-            dbname="apex",
-            user="apex",
-            password="apex123",
-            host="127.0.0.1",
-            port="5433"
-            )
-        logging.info("DB Connection Succesful")
-        return conn
-    except psycopg2.Error as e:
-        traceback.print_exc()
-        logging.error(f"Database connection error: {e}")
-        return None
 get_db_connection()
 # Log new conversation or updates in the database
 def log_conversation(from_number, message, bot_reply, status):
@@ -382,6 +375,7 @@ def fetch_conversation_log(from_number, limit=5):
         cursor.close()
         conn.close()
 
+
 def create_new_thread(from_number, last_message):
     """
     Creates a new OpenAI thread while ensuring continuity by including past conversation logs.
@@ -390,7 +384,7 @@ def create_new_thread(from_number, last_message):
     conversation_log = fetch_conversation_log(from_number)  # Get the last few messages
     
     session_summary = (
-        f"🔄 *Session Summary for {from_number}:* \n"
+        f"🔄 Session Summary for {from_number}: \n"
         f"Previous conversation log:\n{conversation_log}\n\n"
         f"Last user message: {last_message}"
     )
@@ -408,12 +402,12 @@ def create_new_thread(from_number, last_message):
                 "content": f"This is a new user whose contact number is {from_number}. ASK FOR THE USER'S FULL NAME FIRST. After you get users name respond with Nice to meet you, and assist the client accordingly.  Respond with 12 words or less and to the point"
                             "NB whenever a car model or class is mentioned whether from user or from you at any point, ALWAYS SEND THE TRIGGER FOR THE Images of CAR MODEL OR CAR CLASS TO SHOW IMAGES as well"
                             "(Once name is captured, don't ask for it again when getting service requirements) add emojis but sparingly not all messages. Use emojis here and there"
-                            "For rental ALWAYS ask for rent out date and return date, for towing ask for pickup separately first and destination location on its own then give user an estimate towing fee"
+                            "For rental ALWAYS ask for rent out date and return date then check availability after reciving the dates, for towing ask for pickup separately first and destination location on its own then give user an estimate towing fee"
                             "For towing ALWAYS send the estimate fee and Estimated time of arrival right after getting pickup and destination address before asking for car image to confirm towing"
                             "If you respond and do not get a clear answer, politely acknowledge the user's response and ask your question but in a different way"
-                            "Users are from Zimbabwe, so they speak English, Shona and maybe Ndebele typically mixed. ALWAYS ANSWER IN ENGLISH"
+                            "Users are from Zimbabwe, so they speak English and Shona typically mixed. ALWAYS ANSWER IN Shona unless spoken to in English. Try to be Casual and match user's tone"
                             "These are some common Shona phrases" "marii- means how much, if you get that, Tell the user: Let me share the prices with you." 
-
+                            "Rental is on 24 hr basis, so if a user takes a car and retunr s its the following days, we charge 1 days worth or rantal as it will be 24hrs. e.g $45 Aqua rental from 1 April to 2 April is 24hrs hence its $45"
                             "Example:"
                             "User: imarii? or  marii or mari?"
                             "Bot: Let me share the prices with you"
@@ -450,7 +444,6 @@ def create_new_thread(from_number, last_message):
         logging.error(f"❌ Failed to create a new thread: {response.text}")
         return None
  
-
 def check_and_notify_availability(from_number):
     """
     Checks availability of a vehicle model using a structured summary generated by OpenAI.
@@ -461,8 +454,10 @@ def check_and_notify_availability(from_number):
         f"If no car model is mentioned, respond with 'Unknown'.\n"
         f"Just keep the summary short e.g\n" 
         """📢 Car Availability Check!
+
             🚗 Car Type: Toyota Aqua
             📞 Contact: 263784178307
+            🕰 Rental and Return Date: 29-30 March
             🔍 Availability Status: Checking..."""
     )
     logging.info(f"💡 Sending structured availability request to OpenAI: {openai_message}")
@@ -470,6 +465,11 @@ def check_and_notify_availability(from_number):
     try:
         admin_summary = query_openai_model(openai_message, from_number).strip()
         logging.info(f"✅ OpenAI response for availability check: {admin_summary}")
+
+        # ✅ Extract Rental and Return directly from the admin summary
+        rental_and_return_match = re.search(r"🕰 Rental and Return Date: (.+)", admin_summary)
+        rental_and_return = rental_and_return_match.group(1).strip() if rental_and_return_match else "Unknown"
+        logging.info(f"✅ Extracted Rental and Return from Admin Summary: {rental_and_return}")
 
         # ✅ Extract Car Type directly from the admin summary
         car_type_match = re.search(r"🚗 Car Type: (.+)", admin_summary)
@@ -486,7 +486,7 @@ def check_and_notify_availability(from_number):
             logging.info(f"🔧 Availability check result for {vehicle_model}: {'Available' if is_available else 'Not Available'}")
 
             if is_available:
-                response = f"🚗 Great news! The {vehicle_model} is available for rent. Let's proceed with the rental process."
+                response = f"🚗 Great news! Your {vehicle_model} will be ready for you then. Let's proceed."
                 logging.info(f"✅ {vehicle_model} is available. Sending confirmation message to {from_number}.")
                 send_whatsapp_message(from_number, response)
 
@@ -494,12 +494,12 @@ def check_and_notify_availability(from_number):
                 logging.info(f"💰 Triggering payment button for {from_number}.")
                 trigger_payment_button(from_number)
             else:
-                response = f"🚫 Sorry, the {vehicle_model} is currently not available. I have added you to the waitlist."
+                response = f"We’re preparing your car for you! Our admin will be in touch shortly with good news..."
                 logging.warning(f"🚫 {vehicle_model} is not available. Adding {from_number} to waitlist.")
                 send_whatsapp_message(from_number, response)
 
                 # ✅ Add to waitlist if not available
-                add_to_waitlist(from_number, vehicle_model)
+                add_to_waitlist(from_number, vehicle_model, rental_and_return)
             return
         else:
             logging.warning(f"❗ OpenAI failed to extract a valid car model from structured summary.")
@@ -512,7 +512,6 @@ def check_and_notify_availability(from_number):
     # If no car model found
     logging.error(f"❌ No car model found in the structured summary from {from_number}.")
     send_whatsapp_message(from_number, "❗ Sorry, I couldn't identify the car model. Please specify the car you'd like to rent.")
-
 
 def trigger_payment_button(from_number):
     """
@@ -632,20 +631,22 @@ def handle_payment_selection(from_number, selection_id):
     drive_link = drive_links.get(from_number, "No Drive Link Available")
 
     # ✅ Generate Admin Summary using OpenAI
+    # ✅ Generate Admin Summary using OpenAI
     openai_message_admin = (
-        f"A user has uploaded an image for processing. These are their details: \n"
+        f"A user has selected a payment method for the servivce they are requesting. These are their details: \n"
         f"📞 Contact: {from_number}\n"
         f"📌 Reference Number: {ref_number}\n"
         f"Payment Method: {payment_method}"
         "If payment method is online, expect an image upload of a proof of payment"
         f"drive link: {drive_link} "
         f"📋 Generate a structured summary including the user's name, car type, Contact, Ref Number,drive link: {drive_link} "
-        f"Service Type, and any available uploaded document links.\n"
+        f"Service Type, Reg number if its tracking and any available uploaded document links.\n"
         f"Just keep the summary short e.g\n" 
-        """📢 New Car Rental Request!
+        """📢 New [Service Name] Request!
             👤 Client: Tanaka Mupfurutsa
             📞 Contact: 263784178307
             🚗 Car Type: Toyota Landcruiser 300 Series
+            🎫 Reg No: ABC_1234
             📸 Image Link: [View Image](https://drive.google.com/file/d/1zIdjXxvh1fKb6AM580uGUmYTKty15N/view?usp=drivesdk)
             📝 Service Type: Toyota Landcruiser 300 Series Rental
             📌 Reference Number: ATT031315
@@ -731,7 +732,7 @@ def check_vehicle_availability(vehicle_model):
         cursor.close()
         conn.close()
 
-def add_to_waitlist(user_name, car_type):
+def add_to_waitlist(user_name, car_type, rental_and_return):
 
     conn = get_db_connection()
 
@@ -749,7 +750,7 @@ def add_to_waitlist(user_name, car_type):
         print(f"Added to waitlist with ID: {waitlist_id}")
 
         # Trigger admin notification
-        notify_admin(user_name, car_type)
+        notify_admin(user_name, car_type, rental_and_return)
 
     except Exception as e:
         print(f"Error adding to waitlist: {str(e)}")
@@ -758,15 +759,14 @@ def add_to_waitlist(user_name, car_type):
         conn.close()
 
 
-def notify_admin(user_name, car_type):
+def notify_admin(user_name, car_type, rental_and_return):
 
     try:
-        message = f"🚗 New waitlist request: User '{user_name}' is requesting a '{car_type}' that is currently unavailable."
+        message = f"🚗 New waitlist request: User '{user_name}' is requesting a '{car_type}' that is currently unavailable.\nFor Dates {rental_and_return}"
         send_whatsapp_message(ADMIN_NUMBER, message)
 
     except Exception as e:
-        print(f"Error notifying admin: {str(e)}") 
-
+        print(f"Error notifying admin: {str(e)}")
 
 def extract_vehicle_model(service_type):
     """
@@ -1287,6 +1287,11 @@ def send_whatsapp_message(to, message=None, max_retries=3, is_bot_message=False)
 
     if detected_trigger:
         logging.info(f"🛑 Detected trigger word '{detected_trigger}' in message.")
+        # if detected_trigger == "trigger_check_car_availability":
+        #     logging.info(f"🚫 Skipping text message for trigger '{detected_trigger}'")
+        #     send_to_webhook(to, detected_trigger)
+        #     logging.info(f"✅ Sent trigger word '{detected_trigger}' to webhook.")
+        #     return True
 
         # ✅ If from bot, send trigger directly to webhook (DO NOT request another bot reply)
         if is_bot_message:
@@ -1475,15 +1480,59 @@ def generate_ref_number():
 
 def extract_service_type(text):
     """
-    Extracts the service type (Towing, Travel, Rental, Other) from OpenAI's response.
+    Extracts the service type (Towing, Travel, Rental, Tracking, Other) from OpenAI's response.
+    For Tracking, saves details into the database including reg number.
     """
     service_types = ["Towing", "Travel", "Rental", "Tracking", "Other"]
-    
+    conn = get_db_connection()
+    if not conn:
+        return "❌ Database connection failed."
+
+    lower_text = text.lower()
+
     for service in service_types:
-        if service.lower() in text.lower():
-            logging.info(f"Service request Detected: {service}")
+        if service.lower() in lower_text:
+            logging.info(f"Service request detected: {service}")
+            
+            if service == "Tracking":
+                try:
+                    # Safely extract fields
+                    client_match = re.search(r"👤 Client: (.+)", text)
+                    contact_match = re.search(r"📞 Contact: (\d+)", text)
+                    vehicle_match = re.search(r"(?:🚗 )?(?:Vehicle|Car Type): (.+)", text)
+                    reg_match = re.search(r"🎫 Reg No: (.+)", text)
+                    ref_match = re.search(r"📌 Reference Number: (\w+)", text)
+
+                    if not all([client_match, contact_match, vehicle_match, reg_match, ref_match]):
+                        missing_fields = []
+                        if not client_match: missing_fields.append("Client")
+                        if not contact_match: missing_fields.append("Contact")
+                        if not vehicle_match: missing_fields.append("Vehicle")
+                        if not reg_match: missing_fields.append("Reg No")
+                        if not ref_match: missing_fields.append("Reference Number")
+
+                        raise ValueError(f"Missing fields: {', '.join(missing_fields)}")
+
+                    client_name = client_match.group(1).strip()
+                    contact_number = contact_match.group(1).strip()
+                    vehicle = vehicle_match.group(1).strip()
+                    reg_number = reg_match.group(1).strip()
+                    reference_number = ref_match.group(1).strip()
+
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        INSERT INTO tracking (client_name, contact_number, vehicle, reg_number, reference_number, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    ''', (client_name, contact_number, vehicle, reg_number, reference_number, datetime.now()))
+                    conn.commit()
+                    logging.info("✅ Tracking request saved successfully.")
+                except Exception as e:
+                    logging.error(f"❌ Failed to insert tracking request: {e}")
+                    return "❌ Failed to process tracking request."
+
             return service
-    return "Other"  # Default if no service type is detected
+
+    return "Other"
 
 def user_exists(from_number):
     """Checks if a user exists in the services table."""
@@ -1525,10 +1574,10 @@ def set_user_thread(from_number, thread_id):
     user_threads[from_number] = thread_id
     #print(f"✅ Thread ID {thread_id} set for user {from_number}")
 
-
 def send_freight_notification_to_admin(from_number, message):
     """
-    Extracts freight details from an OpenAI conversation and sends a structured notification to the admin.
+    Extracts freight details from an OpenAI conversation, stores them in the database,
+    and sends a structured notification to the admin.
     """
 
     # ✅ Generate Unique Reference Number
@@ -1545,30 +1594,25 @@ def send_freight_notification_to_admin(from_number, message):
         f"Example:\n"
         f"User: I need to transport 10 tonnes of maize to Kadoma with a 30-tonne flatbed.\n"
         f"AI Response:\n"
+        f"👤 Username: [Username]"
         f"✅ Freight: Maize\n"
         f"📦 Quantity: 10 tonnes\n"
         f"📍 Destination: Kadoma\n"
         f"🚛 Truck Type: 30-tonne flatbed"
     )
 
-    # Query OpenAI for freight details
     freight_details = query_openai_model(openai_prompt, from_number)
-
-    # Log the raw response to debug
     logging.info(f"Raw OpenAI response: {freight_details}")
 
     if not freight_details:
         logging.warning("⚠ OpenAI failed to extract freight details.")
         return "Sorry, I couldn't extract the details. Please provide the freight type, quantity, destination, and truck type."
 
-    # ✅ Parse freight details
     try:
-        # Attempt to parse the response if it appears to be JSON
         if isinstance(freight_details, str):
             try:
                 freight_details = json.loads(freight_details)
             except Exception:
-                # Attempt to manually parse a structured response if JSON decoding fails
                 lines = freight_details.split("\n")
                 freight_type = quantity = destination = truck_type = "Unknown"
                 for line in lines:
@@ -1580,30 +1624,60 @@ def send_freight_notification_to_admin(from_number, message):
                         destination = line.replace("📍 Destination:", "").strip()
                     elif line.startswith("🚛 Truck Type:"):
                         truck_type = line.replace("🚛 Truck Type:", "").strip()
+                    elif line.startswith("👤 Username:"):
+                        username = line.replace("👤 Username:", "").strip()
             else:
-                # Extract values from the parsed JSON
                 freight_type = freight_details.get("freight_type", "Unknown")
                 quantity = freight_details.get("quantity", "Unknown")
                 destination = freight_details.get("destination", "Unknown")
                 truck_type = freight_details.get("truck_type", "Unknown")
+
+        # ✅ Save to Database
+        conn = get_db_connection()
+        if not conn:
+            return "❌ Database connection failed."
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO freight_requests 
+            (contact_number, freight_type, quantity, destination, truck_type, reference_number, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ''', (from_number, freight_type, quantity, destination, truck_type, ref_number, datetime.now()))
+        conn.commit()
+        logging.info("✅ Freight request saved successfully.")
+
     except Exception as e:
         traceback.print_exc()
-        logging.error(f"Error parsing freight details: {str(e)}")
-        return "An error occurred while processing the freight details."
+        logging.error(f"Error parsing/saving freight details: {str(e)}")
+        return "An error occurred while processing the freight request."
 
     # ✅ Format Admin Message
     admin_message = (
-        f"📢 *New Freight Request!*\n"
-        f"👤 *Client:* {from_number}\n"
-        f"📦 *Freight:* {freight_type}\n"
-        f"🔢 *Quantity:* {quantity}\n"
-        f"📍 *Destination:* {destination}\n"
-        f"🚛 *Truck Type:* {truck_type}\n"
-        f"📌 *Reference Number:* {ref_number}\n"
-        f"🚛 *Next Steps:* Connect with the freight operator."
+        f"📢 New Freight Request!\n"
+        f"👤 Client: {from_number}\n"
+        f"📦 Freight: {freight_type}\n"
+        f"🔢 Quantity: {quantity}\n"
+        f"📍 Destination: {destination}\n"
+        f"🚛 Truck Type: {truck_type}\n"
+        f"📌 Reference Number: {ref_number}\n"
+        f"🚛 Next Steps: Connect with the freight operator."
     )
+    try:
+        extracted_service = "Freight"
+        extracted_name = username  # Replace this if you plan to extract the client's name in future
+        drive_link = "Not Uploaded"  # Not relevant for freight for now
 
-    # ✅ Send Notification to Admin
+        store_service_request(
+            from_number=from_number,
+            service_type=extracted_service,
+            ref_number=ref_number,
+            user_name=extracted_name,
+            drive_link=drive_link
+        )
+        logging.info("✅ Service request logged in services table.")
+
+    except Exception as e:
+        logging.warning(f"⚠ Failed to store service request in services table: {str(e)}")
+
     try:
         send_whatsapp_message(ADMIN_NUMBER, admin_message)
         logging.info(f"Notification sent to admin: {admin_message}")
@@ -1613,7 +1687,7 @@ def send_freight_notification_to_admin(from_number, message):
         return "Failed to send freight notification to admin."
 
     # ✅ Notify User
-    user_reply = f"Your reference number is {ref_number}. Our Freight Operator will contact you from this number +123456"
+    user_reply = f"Your reference number is {ref_number}. Our Freight Operator will contact you from this number +263778660522"
     try:
         send_whatsapp_message(from_number, user_reply)
         logging.info(f"User notified: {user_reply}")
@@ -1874,50 +1948,50 @@ def fetch_media_url(media_id):
         logging.error(f"❌ Failed to fetch media URL: {response.status_code} - {response.text}")
         return None
 
-def send_whatsapp_file(recipient, file_url, file_type="image", caption=None):
-    """
-    Sends a file via WhatsApp with retry logic if network fails.
-    """
-    logging.info(f"📤 Sending file via WhatsApp to {recipient}...")
+# def send_whatsapp_file(recipient, file_url, file_type="image", caption=None):
+#     """
+#     Sends a file via WhatsApp with retry logic if network fails.
+#     """
+#     logging.info(f"📤 Sending file via WhatsApp to {recipient}...")
 
-    phone_number_id = os.environ["META_PHONE_NUMBER_ID"]
-    access_token = os.environ["META_ACCESS_TOKEN"]
+#     phone_number_id = os.environ["META_PHONE_NUMBER_ID"]
+#     access_token = os.environ["META_ACCESS_TOKEN"]
 
-    if not phone_number_id or not access_token:
-        logging.error("❌ Missing API credentials.")
-        return  
+#     if not phone_number_id or not access_token:
+#         logging.error("❌ Missing API credentials.")
+#         return  
 
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-    }
+#     headers = {
+#         "Authorization": f"Bearer {access_token}",
+#         "Content-Type": "application/json",
+#     }
 
-    payload = {
-        "messaging_product": "whatsapp",
-        "recipient_type": "individual",
-        "to": recipient,
-        "type": file_type,
-        file_type: {
-            "link": file_url
-        }
-    }
+#     payload = {
+#         "messaging_product": "whatsapp",
+#         "recipient_type": "individual",
+#         "to": recipient,
+#         "type": file_type,
+#         file_type: {
+#             "link": file_url
+#         }
+#     }
 
-    if caption:
-        payload[file_type]["caption"] = caption
+#     if caption:
+#         payload[file_type]["caption"] = caption
 
-    url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
+#     url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
 
-    try:
-        response = requests.post(url, headers=headers, json=payload)
-        response.raise_for_status()
-        logging.info(f"✅ File sent successfully to {recipient}: {file_url}")
+#     try:
+#         response = requests.post(url, headers=headers, json=payload)
+#         response.raise_for_status()
+#         logging.info(f"✅ File sent successfully to {recipient}: {file_url}")
 
-    except requests.exceptions.RequestException as e:
-        traceback.print_exc()
-        logging.error(f"❌ Failed to send file to {recipient}. Retrying later.")
+#     except requests.exceptions.RequestException as e:
+#         traceback.print_exc()
+#         logging.error(f"❌ Failed to send file to {recipient}. Retrying later.")
 
-        # ✅ Save pending response with retry count
-        save_pending_response(recipient, file_url, file_type=file_type, caption=caption, retries=1)
+#         # ✅ Save pending response with retry count
+#         save_pending_response(recipient, file_url, file_type=file_type, caption=caption, retries=1)
 
 def process_user_selection(response_data, message):
     """
@@ -2026,8 +2100,16 @@ def process_user_selection(response_data, message):
         ],
         "4": [
             {
-            "file_url": "https://drive.google.com/uc?export=download&id=162Lbs7Lb_bQMyFlq86oMVRm_XQ4t6ezT",
-            "caption": "📍 Tracking Services - Keep an eye on your Vehicles!"
+            "file_url": "https://drive.google.com/uc?export=download&id=1ps69mILhPuSdgCJ93yQa7sb1ZAzOa0cO",
+            "caption": "We are creating your profile …\n"
+                "Please provide:\n"
+
+                        "Your Preffered Account Name\n"
+                        "Address\n"
+                        "Phone Number\n"
+                        "Vehicle Make\n"
+                        "Colour\n"
+                        "Reg Number"
         },
         ],
         "5": [
@@ -2224,7 +2306,7 @@ def send_specific_car(response_data, message):
             caption = flyer["caption"]
 
             # Send each flyer
-            send_whatsapp_file(from_number, file_url, file_type="image", caption=caption)
+            #send_whatsapp_file(from_number, file_url, file_type="image", caption=caption)
             sent_message += f"\n{flyer['caption']}"
 
         return {"message": f"Flyers for option {user_selection} sent successfully."}, 200
@@ -2780,6 +2862,9 @@ def handle_suspicious_inquiry(from_number, message):
     # ✅ Send Notification to Admin
     try:
         send_whatsapp_message(ADMIN_NUMBER, admin_message)
+        # ✅ Save inquiry to database
+        save_suspicious_inquiry(from_number, client_message, reason, ref_number)
+
         logging.info(f"🚨 Suspicious inquiry notification sent to admin: {admin_message}")
     except Exception as e:
         traceback.print_exc()
@@ -2789,125 +2874,158 @@ def handle_suspicious_inquiry(from_number, message):
 
 
 
-
-def trigger_whatsapp_flow(to_number, message, flow_cta, flow_id):
+def save_suspicious_inquiry(client_number, request, reason, ref_number):
     """
-    Sends a request to trigger a WhatsApp Flow with the correct structure.
-    Uses logging for debugging.
+    Save a suspicious rental inquiry to the database.
     """
-    PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID")  # WhatsApp Business API Phone Number ID
-    ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")  # Your API Access Token
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO suspicious_inquiries (client_number, request, reason, ref_number)
+            VALUES (%s, %s, %s, %s)
+        """, (client_number, request, reason, ref_number))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        logging.info(f"✅ Suspicious inquiry saved: {ref_number}")
+    except Exception as e:
+        logging.error(f"❌ Failed to save suspicious inquiry: {e}")
 
-    # ✅ Log environment variables
-    logging.debug(f"📢 Triggering WhatsApp Flow for {to_number}")
-    logging.debug(f"🔍 PHONE_NUMBER_ID: {PHONE_NUMBER_ID}")
-    logging.debug(f"🔍 FLOW_ID: {flow_id}")  # Use the passed parameter
 
-    if not PHONE_NUMBER_ID or not ACCESS_TOKEN or not flow_id:
-        logging.error("❌ Missing required environment variables!")
-        return "Error: Missing environment variables."
 
-    url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
+# def trigger_whatsapp_flow(to_number, message, flow_cta, flow_id):
+#     """
+#     Sends a request to trigger a WhatsApp Flow with the correct structure.
+#     Uses logging for debugging.
+#     """
+#     PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID")  # WhatsApp Business API Phone Number ID
+#     ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")  # Your API Access Token
 
-    headers = {
-        "Authorization": f"Bearer {ACCESS_TOKEN}",
-        "Content-Type": "application/json",
-    }
+#     # ✅ Log environment variables
+#     logging.debug(f"📢 Triggering WhatsApp Flow for {to_number}")
+#     logging.debug(f"🔍 PHONE_NUMBER_ID: {PHONE_NUMBER_ID}")
+#     logging.debug(f"🔍 FLOW_ID: {flow_id}")  # Use the passed parameter
 
-    payload = {
-        "messaging_product": "whatsapp",
-        "recipient_type": "individual",
-        "to": to_number,
-        "type": "interactive",
-        "interactive": {
-            "type": "flow",
-            "body": {
-                "text": message
-            },
-            "action": {
-                "name": "flow",
-                "parameters": {
-                    "flow_id": flow_id,  
-                    "flow_cta": flow_cta,
-                    "flow_token": 'rufaro_is_a_genius',
-                    "flow_message_version": 3,
-                    "mode": 'published',
-                }
-            }
-        }
-    }
+#     if not PHONE_NUMBER_ID or not ACCESS_TOKEN or not flow_id:
+#         logging.error("❌ Missing required environment variables!")
+#         return "Error: Missing environment variables."
 
-    response = requests.post(url, headers=headers, json=payload)
+#     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
 
-    # ✅ Log API response
-    logging.debug(f"🔍 WhatsApp API Response ({response.status_code}): {response.text}")
+#     headers = {
+#         "Authorization": f"Bearer {ACCESS_TOKEN}",
+#         "Content-Type": "application/json",
+#     }
 
-    if response.status_code == 200:
-        logging.info(f"✅ Flow triggered successfully for {to_number}")
-        return "Flow triggered successfully."
-    else:
-        logging.error(f"❌ Error triggering flow for {to_number}: {response.text}")
-        return f"Error triggering flow: {response.text}"
+#     payload = {
+#         "messaging_product": "whatsapp",
+#         "recipient_type": "individual",
+#         "to": to_number,
+#         "type": "interactive",
+#         "interactive": {
+#             "type": "flow",
+#             "body": {
+#                 "text": message
+#             },
+#             "action": {
+#                 "name": "flow",
+#                 "parameters": {
+#                     "flow_id": flow_id,  
+#                     "flow_cta": flow_cta,
+#                     "flow_token": 'rufaro_is_a_genius',
+#                     "flow_message_version": 3,
+#                     "mode": 'published',
+#                 }
+#             }
+#         }
+#     }
 
+#     response = requests.post(url, headers=headers, json=payload)
+
+#     # ✅ Log API response
+#     logging.debug(f"🔍 WhatsApp API Response ({response.status_code}): {response.text}")
+
+#     if response.status_code == 200:
+#         logging.info(f"✅ Flow triggered successfully for {to_number}")
+#         return "Flow triggered successfully."
+#     else:
+#         logging.error(f"❌ Error triggering flow for {to_number}: {response.text}")
+#         return f"Error triggering flow: {response.text}"
 
 def save_rating_to_db(flow_response):
     """
     Extracts flow data from the response and saves it to the ratings table.
     """
     try:
-        # Establish a database connection
         conn = get_db_connection()
         if not conn:
             logging.error("Unable to establish a database connection.")
             return False
 
-        # Parse the flow response
-        try:
-            # If the response_json itself is a JSON string, parse it again
-            if isinstance(flow_response, str):
+        # Parse the incoming JSON
+        if isinstance(flow_response, str):
+            try:
                 flow_response = json.loads(flow_response)
-        except json.JSONDecodeError as e:
-            logging.error(f"❌ Error decoding flow response JSON: {str(e)}")
-            return False
+            except json.JSONDecodeError as e:
+                logging.error(f"❌ JSON decoding failed: {str(e)}")
+                return False
 
         rating = None
         comment = None
+        contact_number = None
 
-        # Extract the rating from the specific key prefix
+        # 🔍 1. Extract contact number (needed to look up service)
+        contact_number = flow_response.get("contacts[0].wa_id")
+        if not contact_number:
+            logging.error("❌ Contact number not found in flow.")
+            return False
+        logging.info(f"📞 Extracted contact number: {contact_number}")
+
+        # 🔍 2. Extract rating
         for key, value in flow_response.items():
-            if "screen_0_Rental_Experience_0" in key:
-                rating_match = re.search(r"\((\d+)/\d+\)", value)  # Find pattern like (4/5)
+            if "screen_0_Service_Experience_0" in key:
+                rating_match = re.search(r"\((\d+)/\d+\)", value)
                 if rating_match:
                     try:
-                        rating = int(rating_match.group(1))  # Extract the number before the slash
+                        rating = int(rating_match.group(1))
                         logging.info(f"✅ Extracted rating: {rating}")
                     except ValueError:
-                        logging.error(f"❌ Invalid rating value: {rating_match.group(1)}")
-                        continue
-
-        # Extract the comment from the specific key prefix
+                        logging.warning("⚠️ Invalid rating format")
+        
+        # 🔍 3. Extract comment
         for key, value in flow_response.items():
-            if "screen_0_Rental_Experience_1" in key:
+            if "screen_0_Service_Experience_1" in key:
                 comment = value.strip()
                 logging.info(f"✅ Extracted comment: {comment}")
 
-        # Fallback if rating or comment is still None
+        # Set defaults if necessary
         if rating is None:
             logging.warning("⚠️ Rating not found, defaulting to 0.")
             rating = 0
-        
         if not comment:
-            logging.info("⚠️ Comment not found, defaulting to 'No comment provided'.")
             comment = "No comment provided"
 
-        # Assuming service type and ref number are passed separately or hardcoded
-        service_type = "rental"  # You can modify this as needed
-        ref_number = "Unknown"  # Placeholder for the reference number
+        # 🔍 4. Look up pending rating info from DB
+        service_type = "Unknown"
+        ref_number = "Unknown"
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT service_type, ref_number 
+                FROM pending_ratings 
+                WHERE contact_number = %s 
+                ORDER BY timestamp DESC 
+                LIMIT 1
+            """, (contact_number,))
+            result = cursor.fetchone()
+            if result:
+                service_type, ref_number = result
+                logging.info(f"🔗 Linked to service: {service_type} | Ref: {ref_number}")
+            else:
+                logging.warning("⚠️ No pending_ratings match found for contact.")
 
-        # Get the current timestamp
+        # 📝 5. Insert final rating record
         timestamp = datetime.utcnow()
-
-        # Insert data into the database
         insert_query = """
             INSERT INTO ratings (timestamp, rating, comment, service_type, ref_number)
             VALUES (%s, %s, %s, %s, %s)
@@ -2915,20 +3033,23 @@ def save_rating_to_db(flow_response):
         with conn.cursor() as cursor:
             cursor.execute(insert_query, (timestamp, rating, comment, service_type, ref_number))
             conn.commit()
+            logging.info(f"✅ Rating saved: {rating}, {comment}, {service_type}, {ref_number}")
 
-        logging.info(f"✅ Successfully saved rating to the database: {rating}, {comment}, {service_type}, {ref_number}")
-        return True
+        # ✅ 6. Optional: remove the pending rating to avoid duplicates
+        with conn.cursor() as cursor:
+            cursor.execute("DELETE FROM pending_ratings WHERE contact_number = %s", (contact_number,))
+            conn.commit()
+            logging.info("🗑️ Removed pending rating after successful save.")
 
     except Exception as e:
-        logging.error(f"❌ Error saving rating to the database: {str(e)}")
+        logging.error(f"❌ Error saving rating: {str(e)}")
         traceback.print_exc()
         return False
 
     finally:
         if conn:
             conn.close()
-            logging.info("Database connection closed.")
-
+            logging.info("🔌 Database connection closed.")
 
 
 
@@ -2948,7 +3069,7 @@ def whatsapp_webhook():
     """
     
     if request.method == 'GET':
-        verify_token = VERIFY_TOKEN
+        verify_token = os.getenv("VERIFY_TOKEN")
         hub_mode = request.args.get('hub.mode')
         hub_token = request.args.get('hub.verify_token')
         hub_challenge = request.args.get('hub.challenge')
@@ -3078,13 +3199,14 @@ def whatsapp_webhook():
             if message.get('type') == "interactive":
                 interactive_data = message.get('interactive', {})
 
-                # Handle Flow Submission (nfm_reply)
+                # Handle Flow Submission (nfm_refply)
                 if interactive_data.get('type') == "nfm_reply":
                     flow_response = interactive_data.get('nfm_reply', {}).get('response_json')
 
                     if flow_response:
                         response_data = json.loads(flow_response)  # Convert string to dictionary
                         success = save_rating_to_db(response_data)
+                        send_whatsapp_message(from_number, "Thank you for your rating. If there is anything else I can help with, please let me know 😊")
                         if success:
                             return jsonify({"message": "Flow data saved successfully"}), 200
                         else:
@@ -3178,13 +3300,13 @@ def whatsapp_webhook():
             # ✅ Proceed to process bot response after handling all user triggers
             # ✅ Get the bot's response
             #Try to get an FAQ response first
-            faq_response = get_faq_response(incoming_message, from_number)
-            if faq_response:
-                send_whatsapp_message(from_number, faq_response, is_bot_message=True)
-            else:
-                # Fallback to OpenAI if no FAQ match
-                bot_reply = query_openai_model(incoming_message, from_number)
-                send_whatsapp_message(from_number, bot_reply, is_bot_message=True)
+            # faq_response = get_faq_response(incoming_message, from_number)
+            # if faq_response:
+            #     send_whatsapp_message(from_number, faq_response, is_bot_message=True)
+            # else:
+            #     # Fallback to OpenAI if no FAQ match
+            bot_reply = query_openai_model(incoming_message, from_number)
+            send_whatsapp_message(from_number, bot_reply, is_bot_message=True)
 
             
 
